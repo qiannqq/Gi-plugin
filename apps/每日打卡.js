@@ -151,20 +151,15 @@ export class meiridaka extends plugin {
         }
         const zhi = Math.floor(Math.random() * 101);
         console.log(zhi);
-        if (zhi <= 10) {
-          const fujia = "嗯...看起来你今天的幸运值很低，不过不要丧失对生活的希望哦喵~";
-          const { img } = await image(e, 'mrdk', 'mrdk', {
-            zhi,
-          })
-          let msg = [segment.at(e.user_id),
-            `\n你今天的幸运值是……`,
-            img,
-            fujia
-          ]
-        }
+        const { img } = await image(e, 'mrdk', 'mrdk', {
+          zhi,
+        })
+        let msg = [segment.at(e.user_id),
+          `\n你今天的幸运值是……`,
+          img
+        ]
         let { config } = getconfig(`config`, `config`)
         if (zhi >= config.mrdkOH){
-          
           let date_time3 = await redis.get(`Yunzai:ohuangriqi_daka`);date_time3 = JSON.parse(date_time3); //获取上一次欧皇诞生时间
           if (date_time3 !== date_time){ //判断上一次欧皇诞生时间是否为今天
             msg = [segment.at(e.user_id),
@@ -192,6 +187,13 @@ export class meiridaka extends plugin {
             redis.set(`Yunzai:fqiuqqun_daka`, JSON.stringify(e.group_id));//写入：非酋groupid
             redis.set(`Yunzai:fqiuriqi_daka`, JSON.stringify(date_time));//写入：非酋日期
           }
+        } else if(zhi <= 10) {
+          const fujia = "嗯...看起来你今天的幸运值很低，不过不要丧失对生活的希望哦喵~";
+          msg = [segment.at(e.user_id),
+            `\n你今天的幸运值是……`,
+            img,
+            fujia
+          ]
         }
         redis.set(`Yunzai:meiridaka3qn:${e.user_id}_daka`, JSON.stringify(date_time));//将当前日期写入redis防止重复抽取
         redis.set(`Yunzai:meiridakazhi:${e.user_id}_daka`, JSON.stringify(zhi));//将打卡获取的幸运值写入redis
