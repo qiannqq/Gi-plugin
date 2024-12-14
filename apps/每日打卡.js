@@ -151,13 +151,17 @@ export class meiridaka extends plugin {
         }
         const zhi = Math.floor(Math.random() * 101);
         console.log(zhi);
-        const { img } = await image(e, 'mrdk', 'mrdk', {
-          zhi,
-        })
-        let msg = [segment.at(e.user_id),
-          `\n你今天的幸运值是……`,
-          img
-        ]
+        if (zhi <= 10) {
+          const fujia = "嗯...看起来你今天的幸运值很低，不过不要丧失对生活的希望哦喵~";
+          const { img } = await image(e, 'mrdk', 'mrdk', {
+            zhi,
+          })
+          let msg = [segment.at(e.user_id),
+            `\n你今天的幸运值是……`,
+            img,
+            fujia
+          ]
+        }
         let { config } = getconfig(`config`, `config`)
         if (zhi >= config.mrdkOH){
           
