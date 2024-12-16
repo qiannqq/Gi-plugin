@@ -203,7 +203,6 @@ export class Gi_yu extends plugin {
       status[key] = true
       let product_info;
       command[2] = command[2].replace(/购买|\*\d*/g, ``)
-      console.log(command)
       for (let item of config.shop) {
         if(command[2] === item.name) product_info = item 
       }
@@ -224,6 +223,11 @@ export class Gi_yu extends plugin {
         delete status[key]
         return true
       }
+      if(buyNumber <= 0) { 
+        await e.reply(`小卖铺老板：你是故意找茬是不是？`)
+        delete status[key]
+        return true
+       }
       switch(product_info.name) {
         case('钓鱼竿润滑油'):
           let userBuff = JSON.parse(await redis.get(`Fishing:${e.user_id}_buff`))
@@ -340,7 +344,6 @@ export class Gi_yu extends plugin {
   async 加急治疗(e) {
     if(status[`PlayerListMoney:${e.user_id}`] || status[`PlayerListMoney`]) return true
     let time = await timerManager.getRemainingTime(e.user_id)
-    console.log(time)
     if(!time || time == 0 ||!await redis.get(`Fishing:${e.user_id}:shayu`)) {
       await e.reply(`你很健康，不需要加急治疗~`)
       return true
