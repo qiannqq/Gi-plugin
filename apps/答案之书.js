@@ -7,7 +7,7 @@ export class daanzhishu extends plugin {
             name: 'Gi互动:答案之书',
             dsc: 'Gi互动:答案之书',
             event: 'message',
-            priority: 1,
+            priority: 500,
             rule:[
                 {
                     reg: '^(#|/)?答案之书(.*)$',

@@ -9,7 +9,7 @@ export class Gi_yu extends plugin {
       name: 'Gi小游戏:钓鱼',
       dsc: 'Gi小游戏:钓鱼',
       event: 'message',
-      priority: 5000,
+      priority: 500,
       rule: [
         {
           reg: '^(#|/)?(钓鱼|🎣)$',

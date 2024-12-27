@@ -15,7 +15,7 @@ export class plp extends plugin {
             name: 'Gi互动:漂流瓶',
             dsc: 'Gi互动:漂流瓶',
             event: 'message',
-            priority: 1,
+            priority: 500,
             rule:[
                 {
                     reg: '^(#|/)?扔漂流瓶$',
