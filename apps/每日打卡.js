@@ -11,7 +11,7 @@ export class meiridaka extends plugin {
         name: 'Gi互动:每日打卡',
         dsc: 'Gi互动:每日打卡',
         event: 'message',
-        priority: 1,
+        priority: 500,
         rule:[
             {
                 reg: '^(#|/)?每日打卡$',

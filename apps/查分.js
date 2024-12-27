@@ -8,7 +8,7 @@ export class chafen extends plugin {
             name: 'Gi互动:模拟高考查分',
             dsc: 'Gi互动:模拟高考查分',
             event: 'message',
-            priority: 5000,
+            priority: 500,
             rule: [
                 {
                     reg: '^(#|/)?查分$',

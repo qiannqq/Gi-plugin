@@ -8,7 +8,7 @@ export class lishiwenxian extends plugin {
       name: 'Gi互动:历史文献',
       dsc: 'Gi互动:历史文献',
       event: 'message',
-      priority: 1,
+      priority: 500,
       rule: [
         {
           reg: '^(#|/)?本群历史$',

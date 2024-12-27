@@ -8,7 +8,7 @@ export class poke extends plugin {
         name: '[Gi互动]戳一戳',
         dsc: '[Gi互动]戳一戳',
         event: 'notice.group.poke',
-        priority: -1
+        priority: 500
       })
     }
     async accept(e){

@@ -16,7 +16,7 @@ export class update extends plugin {
             name: '互动插件更新',
             dsc: '互动插件更新',
             event: 'message',
-            priority: 5000,
+            priority: 500,
             rule: [
                 {
                     reg: '^(#|/)?(互动|Gi|gi|gI|GI)(强制)?更新$',
