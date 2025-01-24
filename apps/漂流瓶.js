@@ -322,7 +322,7 @@ export class plp extends plugin {
             msg = await e.friend.makeForwardMsg(msgList)
         }
         let detail = msg.data?.meta?.detail
-        detail.news = [{ text: `点击查看漂流瓶` }]
+        try { detail.news = [{ text: `点击查看漂流瓶` }] } catch { }
         await e.reply(msg)
         if(!day || day > 3 || !config.dbcomment) {
             await Gimodel.deljson(plp_id1, GiPath + `/data/dbid.json`)
