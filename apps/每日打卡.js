@@ -130,7 +130,7 @@ export class meiridaka extends plugin {
       let fqiuname = await redis.get(`Yunzai:fqiuname_daka`);fqiuname = JSON.parse(fqiuname);
       let fqiuqq = await redis.get(`Yunzai:fqiuqq_daka`);fqiuqq = JSON.parse(fqiuqq);
       let zhi =  await redis.get(`Yunzai:fqiuzhi_daka`);zhi = JSON.parse(zhi)
-      let msg = [`今日的首个非酋已诞生！！！！\nta的名字：【${fqiuname}】\nta的QQ号：(${fqiuqq})\nta的幸运值是：${zhi} ！！！`]
+      let msg = [`今日的首个非酋已诞生！！！！\nta的名字：【${fqiuname}】\nta的幸运值是：${zhi} ！！！`]
       e.reply(msg)
       return true;
     }
