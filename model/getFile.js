@@ -9,6 +9,9 @@ const writeFileAsync = promisify(writeFile);
 import getconfig from './cfg.js';
 
 class Gimodel {
+  async makeForwardMsg(msg, e) {
+    return await Bot[e.self_id].pickUser(e.self_id).makeForwardMsg(msg)
+  }
   /**
    * 依传入的概率随机抽取一个Name
    * @param {Array} arr 数组，元素为对象 { name: 'name1', probability: 20 }

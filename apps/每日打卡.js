@@ -113,7 +113,22 @@ export class meiridaka extends plugin {
         return true;
       }
       let data = await fs.readFile(`plugins/Gi-plugin/resources/mrdk/${e.user_id}.txt`, `utf-8`)
-      e.reply(`你的历史幸运值是……\n${data}`)
+      let msg = [
+        {
+          nickname: e.bot.nickname,
+          user_id: e.bot.uin,
+          message: `你的历史幸运值是...`
+        },{
+          nickname: e.bot.nickname,
+          user_id: e.bot.uin,
+          message: data
+        }
+      ]
+      try {
+        await e.reply(await Gimodel.makeForwardMsg(msg, e))
+      } catch {
+        await e.reply(`你的历史幸运值是...\n${data}`)
+      }
       return true;
     }
     async 今日非酋(e) {
