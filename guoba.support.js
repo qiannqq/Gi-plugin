@@ -25,7 +25,7 @@ export function supportGuoba() {
     configInfo: {
       schemas: [
         {
-          component: 'Divider',
+          component: 'SOFT_GROUP_BEGIN',
           label: '自动更新设置'
         },
         {
@@ -38,13 +38,16 @@ export function supportGuoba() {
         {
           field: 'updatetime',
           label: '自动更新时间',
-          helpMessage: '不会cron表达式？百度搜索在线生成cron表达式(默认每天1:20)',
-          bottomHelpMessage: '填入cron表达式，该项保存后重启生效(格式错了自动更新就寄喽)',
-          component: 'Input',
+          bottomHelpMessage: '填入或选择cron表达式，该项保存后重启生效',
+          component: 'EasyCron',
           required: true,
           componentProps: {
             placeholder: '请输入cron表达式',
           }
+        },
+        {
+          component: 'SOFT_GROUP_BEGIN',
+          label: '娱乐功能设置'
         },
         {
           component: 'Divider',
