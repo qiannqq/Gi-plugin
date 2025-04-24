@@ -6,7 +6,6 @@
   <img src="https://gitee.com/qiannqq/gi-plugin/raw/master/resources/logo.png" alt="Image" width="200" height="200">
 </p>
 
-> 最近身体抱恙，暂缓更新
 
 #### 简介
 本插件多用于群聊中群友之间互动娱乐，因此叫做群互动插件。<br>
