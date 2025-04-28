@@ -14,7 +14,7 @@ export class meiridaka extends plugin {
         priority: 500,
         rule:[
             {
-                reg: '^(#|/)?每日打卡$',
+                reg: '^(#|/)?(每日)?打卡$',
                 fnc: '每日打卡'
             },
             {
