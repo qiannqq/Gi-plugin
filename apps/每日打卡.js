@@ -1,9 +1,6 @@
-import plugin from '../../../lib/plugins/plugin.js';
-import image from '../model/image.js';
-import getconfig from '../model/cfg.js';
 import { promises as fs } from 'fs'
 import fs_ from 'fs'
-import Gimodel from '../model/getFile.js'
+import { image, getconfig, Gimodel } from '../model/index.js'
 
 export class meiridaka extends plugin {
     constructor(){

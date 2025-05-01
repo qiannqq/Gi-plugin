@@ -1,7 +1,7 @@
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const { exec, execSync } = require("child_process");
-import getconfig from '../model/cfg.js';
+import { getconfig } from '../model/index.js'
 import lodash from 'lodash'
 
 // 该Update功能实现参考土块插件 (https://gitee.com/SmallK111407/earth-k-plugin)

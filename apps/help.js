@@ -1,6 +1,4 @@
-import plugin from "../../../lib/plugins/plugin.js";
-import image from "../model/image.js";
-import getconfig from "../model/cfg.js";
+import { image, getconfig } from '../model/index.js'
 import cfg from '../../../lib/config/config.js'
 
 export class example2 extends plugin {
@@ -12,7 +10,7 @@ export class example2 extends plugin {
             priority: 500,
             rule:[
                 {
-                    reg: '^(#|/)?(Gi|互动|群互动|gI|GI|gi)(帮助|菜单|help|功能|说明|指令|使用说明|命令)$',
+                    reg: /^(#|\/)?(Gi|互动|群互动)(帮助|菜单|help|功能|说明|指令|使用说明|命令)$/i,
                     fnc: 'help'
                 }
             ]

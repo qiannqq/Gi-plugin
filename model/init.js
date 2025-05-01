@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs'
 import fs_ from 'fs'
-import Gimodel from './getFile.js'
+import { Gimodel } from './index.js'
 let GiPath = `./plugins/Gi-plugin`
 
 class init {

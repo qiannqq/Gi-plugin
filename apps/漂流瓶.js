@@ -1,9 +1,7 @@
-import plugin from '../../../lib/plugins/plugin.js';
-import Gimodel from '../model/getFile.js';
-import getconfig from '../model/cfg.js';
 import { promises as fs } from 'fs';
 import fs_ from 'fs'
 import fetch from 'node-fetch';
+import { Gimodel, getconfig } from '../model/index.js'
 
 const filePath = `plugins/Gi-plugin/resources/plp.txt`
 const GiPath = `./plugins/Gi-plugin`

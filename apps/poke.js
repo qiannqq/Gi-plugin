@@ -1,6 +1,6 @@
 import plugin from '../../../lib/plugins/plugin.js';
 import cfg_ from'../../../lib/config/config.js';
-import getconfig from '../model/cfg.js';
+import { getconfig } from '../model/index.js'
 
 export class poke extends plugin {
     constructor () {

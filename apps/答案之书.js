@@ -1,5 +1,4 @@
-import plugin from "../../../lib/plugins/plugin.js";
-import getconfig from "../model/cfg.js";
+import { getconfig } from '../model/index.js'
 
 export class daanzhishu extends plugin {
     constructor(){
