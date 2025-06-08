@@ -31,3 +31,99 @@ fish_sale:
     price: 8
   - type: 🦑
     price: 8
+  - type: 🦈
+    price: 15
+  - type: 🐋
+    price: 20
+  - type: 🐬
+    price: 12
+  - type: 🦭
+    price: 18
+  - type: 🦞
+    price: 25
+  - type: 🦪
+    price: 7
+  - type: 🐚
+    price: 4
+  - type: 🪼
+    price: 9
+  - type: 🐉
+    price: 50
+  - type: 🧜♀️
+    price: 35
+  - type: 🧜♂️
+    price: 32
+  - type: 🔴🐠
+    price: 16
+  - type: 🔵🦐
+    price: 14
+  - type: 🟡🐡
+    price: 19
+  - type: 🌿
+    price: 2
+  - type: 🪸
+    price: 11
+  - type: 👟
+    price: 0
+  - type: 🧦
+    price: 0
+  - type: 🗑️
+    price: 0
+  - type: 🐌
+    price: 6
+  - type: 🦂
+    price: 13
+  - type: 🦫
+    price: 17
+  - type: 🦔
+    price: 21
+  - type: 🦩
+    price: 22
+  - type: 🦤
+    price: 23
+  - type: 🦜
+    price: 24
+  - type: 🦢
+    price: 26
+  - type: 🦚
+    price: 27
+  - type: 🦃
+    price: 28
+  - type: 🐧
+    price: 29
+  - type: 🐦
+    price: 30
+  - type: 🐸
+    price: 31
+  - type: 🐊
+    price: 33
+  - type: 🦖
+    price: 34
+  - type: 🦕
+    price: 36
+  - type: 🌊
+    price: 37
+  - type: 🌌
+    price: 38
+  - type: 🌀
+    price: 39
+  - type: 💧
+    price: 40
+  - type: 🌈
+    price: 41
+  - type: 🔱
+    price: 42
+  - type: 🎣
+    price: 43
+  - type: ⚓
+    price: 44
+  - type: 🚤
+    price: 45
+  - type: 🛶
+    price: 46
+  - type: 🧨
+    price: 0
+  - type: 💍
+    price: 0
+  - type: 🕶️
+    price: 0
