@@ -20,7 +20,7 @@ export class chafen extends plugin {
     async 查分(e){
         return await e.reply([
             segment.at(e.user_id),
-            `\n【A市教育考试院】`
+            `\n【A市教育考试院】`,
             `\nA市2025普通高招考试成绩查询系统暂未开放`,
             `\n查分开放时间：2025-06-23`
         ]), true
