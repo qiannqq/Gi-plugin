@@ -18,21 +18,15 @@ export class chafen extends plugin {
         })
     }
     async 查分(e){
-        return await e.reply([
-            segment.at(e.user_id),
-            `\n【A市教育考试院】`,
-            `\nA市2025普通高招考试成绩查询系统暂未开放`,
-            `\n查分开放时间：2025-06-23`
-        ]), true
         let data = []
         data.push({ title: '考生姓名', value: this.nickname || this.e.nickname || e.sender.nickname || '未知考生' })
         data.push({ title: '考生号', value: e.user_id })
         if(!fs.existsSync(`${GiPath}/data/gaokao`)) await fs.promises.mkdir(`${GiPath}/data/gaokao`)
         let total_score = 0
         let subject
-        if(fs.existsSync(`${GiPath}/data/gaokao/2024_${e.user_id}.json`)) {
+        if(fs.existsSync(`${GiPath}/data/gaokao/2025_${e.user_id}.json`)) {
             try {
-                subject = JSON.parse(await fs.promises.readFile(`${GiPath}/data/gaokao/2024_${e.user_id}.json`, 'utf-8'))
+                subject = JSON.parse(await fs.promises.readFile(`${GiPath}/data/gaokao/2025_${e.user_id}.json`, 'utf-8'))
             } catch (error) {
                 subject = []
             }
@@ -45,7 +39,7 @@ export class chafen extends plugin {
             ]
         }
         if(subject.length != 4) {
-            await fs.promises.unlink(`${GiPath}/data/gaokao/2024_${e.user_id}.json`)
+            await fs.promises.unlink(`${GiPath}/data/gaokao/2025_${e.user_id}.json`)
             await e.reply('查询失败，请稍后重试')
             return false
         }
@@ -57,7 +51,7 @@ export class chafen extends plugin {
             data,
             vCode: await Gimodel.getRandom64Code()
         })
-        await fs.promises.writeFile(`${GiPath}/data/gaokao/2024_${e.user_id}.json`, JSON.stringify(subject, null, 3), 'utf-8')
+        await fs.promises.writeFile(`${GiPath}/data/gaokao/2025_${e.user_id}.json`, JSON.stringify(subject, null, 3), 'utf-8')
         await e.reply([segment.at(e.user_id), `\n考生号：${e.user_id}\n(每年仅能查一次)\n你的成绩为：`, img])
         return true;
     }
