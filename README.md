@@ -86,7 +86,6 @@ git clone --depth=1 https://github.com/qiannqq/Gi-plugin.git ./plugins/Gi-plugin
 |------|------|------|
 | [Miao-Yunzai](https://gitee.com/yoimiya-kokomi/Miao-Yunzai) | 喵版Yunzai，源自Le-niao/Yunzai-Bot V3 | [@yoimiya-kokomi](https://gitee.com/yoimiya-kokomi) |
 | [TRSS-Yunzai](https://gitee.com/TimeRainStarSky/Yunzai) | Yunzai多协议版 | [@时雨星空](https://gitee.com/TimeRainStarSky) |
-| [A-Yunzai](https://gitee.com/ningmengchongshui/a-yunzai) | 基于AlemonJS的Miao-Yunzai环境 | [@柠檬冲水](https://gitee.com/ningmengchongshui)<br>[@地球生物](https://gitee.com/diqiushengwu) |
 | [Yunzai-Bot 索引库](https://gitee.com/yhArcadia/Yunzai-Bot-plugins-index) | 云崽相关内容索引库 | [@渔火Arcadia](https://gitee.com/yhArcadia) |
 
 #### 致谢
