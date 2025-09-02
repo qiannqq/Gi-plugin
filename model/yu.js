@@ -277,8 +277,8 @@ class Fish {
         
         let reductionAmount = amount
         if (random) {
-            // 生成随机减少量
-            reductionAmount = Math.random() * (max - min) + min
+            // 生成随机减少量，保留小数点后两位
+            reductionAmount = Math.round((Math.random() * (max - min) + min) * 100) / 100
         }
         
         let newDurability = Math.max(0, currentDurability - reductionAmount)
