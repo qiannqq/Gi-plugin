@@ -240,5 +240,41 @@ class Fish {
         }
     }
 
+    /**
+     * 获取鱼竿耐久度
+     * @param {number} uid 用户QQ
+     */
+    async get_fishing_rod_durability(uid) {
+        let durability = await redis.get(`Fishing:${uid}:rod_durability`)
+        if (!durability) {
+            // 默认耐久度为100%
+            durability = 100
+            await redis.set(`Fishing:${uid}:rod_durability`, durability)
+        }
+        return Number(durability)
+    }
+
+    /**
+     * 设置鱼竿耐久度
+     * @param {number} uid 用户QQ
+     * @param {number} durability 耐久度百分比
+     */
+    async set_fishing_rod_durability(uid, durability) {
+        await redis.set(`Fishing:${uid}:rod_durability`, durability)
+        return true
+    }
+
+    /**
+     * 减少鱼竿耐久度
+     * @param {number} uid 用户QQ
+     * @param {number} amount 减少的百分比
+     */
+    async reduce_fishing_rod_durability(uid, amount) {
+        let currentDurability = await this.get_fishing_rod_durability(uid)
+        let newDurability = Math.max(0, currentDurability - amount)
+        await this.set_fishing_rod_durability(uid, newDurability)
+        return newDurability
+    }
+
 }
 export default new Fish

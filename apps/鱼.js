@@ -98,12 +98,17 @@ export class Gi_yu extends plugin {
       let FishforCD = await timerManager.getRemainingTime(uid + 101)
       if(FishingCD < 0) FishingCD = 0
       if(FishforCD < 0) FishforCD = 0
+      
+      // 获取鱼竿耐久度
+      let rodDurability = await Fish.get_fishing_rod_durability(uid)
+      
       let msg = [
         segment.at(uid),
         `\n钓鱼昵称:${userName || `不知名的钓鱼佬`}`,
         `\n鱼币数量:${userMoney}`,
         `\n润滑油数量:${userBuff || 0}`,
         `\n捕鱼网数量:${UserFishFor || 0}`,
+        `\n鱼竿耐久度:${rodDurability}%`,
         `\n钓鱼竿冷却:${await timerManager.getRemainingTime(uid) || 0}s`,
         `\n捕鱼网冷却:${await timerManager.getRemainingTime(uid + 101) || 0}s`
       ]
@@ -500,8 +505,23 @@ export class Gi_yu extends plugin {
           await redis.set(`Fishing:${e.user_id}_buff`, JSON.stringify(userBuff))
         }
       }
-      let timeSet = timerManager.createTimer(e.user_id, config.fishcd)
-      timeSet.start()
+      
+      // 检查鱼竿耐久度
+      let rodDurability = await Fish.get_fishing_rod_durability(e.user_id)
+      let additionalCD = 0
+      
+      // 如果耐久度已经为0，直接返回错误消息
+      if (rodDurability <= 0) {
+        await e.reply([segment.at(e.user_id), '\n你的鱼竿已经完全损坏了！需要等待720秒才能继续钓鱼。'])
+        let timeSet = timerManager.createTimer(e.user_id, 720)
+        timeSet.start()
+        delete status[key]
+        return true
+      }
+      
+      // 减少1%耐久度
+      let newDurability = await Fish.reduce_fishing_rod_durability(e.user_id, 1)
+      
       let yu = await Fish.get_fish(e.user_id)
       await e.reply(`你开始了钓鱼……`, false, { recallMsg: 5 })
       await common.sleep(2000)
@@ -515,6 +535,16 @@ export class Gi_yu extends plugin {
       yu_text = yu_text.replace(/【鱼】/g, yu)
       yu_text = yu_text.replace(/\n$/g, '')
       await e.reply([segment.at(e.user_id), '\n' + yu_text])
+      
+      // 如果耐久度减少后为0，增加720秒冷却时间并在钓鱼文案后发送损坏消息
+      if (newDurability <= 0) {
+        additionalCD = 720
+        await e.reply([segment.at(e.user_id), '\n你的鱼竿已经完全损坏了！需要额外等待720秒才能继续钓鱼。'])
+      }
+      
+      let totalCD = config.fishcd + additionalCD
+      let timeSet = timerManager.createTimer(e.user_id, totalCD)
+      timeSet.start()
       delete status[key]
       await Fish.wr_bucket(e.user_id, yu)
       return true

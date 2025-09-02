@@ -1,4 +1,5 @@
 import getconfig from '../model/cfg.js'
+import { Fish, common } from '../model/index.js'
 
 export class fish_cse {
     constructor (e) {
@@ -8,10 +9,13 @@ export class fish_cse {
         return [
             {
                 name: '空军',
-                probability: 70
+                probability: 65
             },{
                 name: '鲨鱼',
                 probability: 30
+            },{
+                name: '炸弹',
+                probability: 5
             }
         ]
     }
@@ -42,5 +46,25 @@ export class fish_cse {
         await redis.set(`Fishing:${e.user_id}:shayu`, `true`)
         let timeSet = timerManager.createTimer(e.user_id, config.fishcd * 2)
         timeSet.start()
+    }
+
+    async 炸弹(e) {
+        let msg = [segment.at(e.user_id), `\n你钓上来了一个💣！炸弹爆炸了！`]
+        await e.reply(msg)
+        await common.sleep(500)
+        
+        // 减少鱼竿25%耐久度
+        let currentDurability = await Fish.get_fishing_rod_durability(e.user_id)
+        let newDurability = await Fish.reduce_fishing_rod_durability(e.user_id, 25)
+        
+        await e.reply(`炸弹爆炸损坏了你的鱼竿！耐久度从${currentDurability}%降低到${newDurability}%`)
+        
+        // 如果耐久度为0，增加额外冷却时间
+        if (newDurability <= 0) {
+            let { config } = getconfig(`config`, `config`)
+            let timeSet = timerManager.createTimer(e.user_id, config.fishcd + 720)
+            timeSet.start()
+            await e.reply(`你的鱼竿已经完全损坏了！需要额外等待720秒才能继续钓鱼。`)
+        }
     }
 }
