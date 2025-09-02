@@ -540,8 +540,8 @@ export class Gi_yu extends plugin {
         return true
       }
       
-      // 减少1%耐久度
-      let newDurability = await Fish.reduce_fishing_rod_durability(e.user_id, 1)
+      // 减少随机耐久度（0.1%-10%）
+      let newDurability = await Fish.reduce_fishing_rod_durability(e.user_id, 0, true, 0.1, 10)
       
       let yu = await Fish.get_fish(e.user_id)
       await e.reply(`你开始了钓鱼……`, false, { recallMsg: 5 })

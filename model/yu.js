@@ -267,11 +267,21 @@ class Fish {
     /**
      * 减少鱼竿耐久度
      * @param {number} uid 用户QQ
-     * @param {number} amount 减少的百分比
+     * @param {number} amount 减少的百分比，如果为0则使用随机区间
+     * @param {boolean} random 是否使用随机耐久度减少
+     * @param {number} min 随机区间最小值（百分比）
+     * @param {number} max 随机区间最大值（百分比）
      */
-    async reduce_fishing_rod_durability(uid, amount) {
+    async reduce_fishing_rod_durability(uid, amount = 0, random = false, min = 0.1, max = 10) {
         let currentDurability = await this.get_fishing_rod_durability(uid)
-        let newDurability = Math.max(0, currentDurability - amount)
+        
+        let reductionAmount = amount
+        if (random) {
+            // 生成随机减少量
+            reductionAmount = Math.random() * (max - min) + min
+        }
+        
+        let newDurability = Math.max(0, currentDurability - reductionAmount)
         await this.set_fishing_rod_durability(uid, newDurability)
         return newDurability
     }

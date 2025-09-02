@@ -53,9 +53,9 @@ export class fish_cse {
         await e.reply(msg)
         await common.sleep(500)
         
-        // 减少鱼竿25%耐久度
+        // 减少鱼竿随机耐久度（20%-30%）
         let currentDurability = await Fish.get_fishing_rod_durability(e.user_id)
-        let newDurability = await Fish.reduce_fishing_rod_durability(e.user_id, 25)
+        let newDurability = await Fish.reduce_fishing_rod_durability(e.user_id, 0, true, 20, 30)
         
         await e.reply(`炸弹爆炸损坏了你的鱼竿！耐久度从${currentDurability}%降低到${newDurability}%`)
         
