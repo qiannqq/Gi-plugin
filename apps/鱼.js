@@ -259,6 +259,27 @@ export class Gi_yu extends plugin {
           }
           await redis.set(`Fishing:${e.user_id}_fishfor`, JSON.stringify(FishforData))
           break;
+        case('鱼竿修复工具'):
+          // 检查鱼竿耐久度是否低于10%
+          let rodDurability = await Fish.get_fishing_rod_durability(e.user_id)
+          if (rodDurability > 10) {
+            await e.reply([segment.at(e.user_id), '\n你的鱼竿耐久度还高于10%，不需要修复哦~'])
+            delete status[key]
+            return true
+          }
+          
+          // 修复鱼竿：设置耐久度为100%
+          await Fish.set_fishing_rod_durability(e.user_id, 100)
+          
+          // 减少冷却时间到1秒
+          let currentTime = await timerManager.getRemainingTime(e.user_id)
+          if (currentTime > 0) {
+            let timeSet = timerManager.createTimer(e.user_id, 1)
+            timeSet.start()
+          }
+
+          e.reply(`鱼竿修复成功，耐久度恢复到100%，冷却时间减少到1秒~`)
+          break;
         case('捕鱼船票'):
           break;
       }
