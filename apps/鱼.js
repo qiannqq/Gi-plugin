@@ -531,11 +531,9 @@ export class Gi_yu extends plugin {
       let rodDurability = await Fish.get_fishing_rod_durability(e.user_id)
       let additionalCD = 0
       
-      // 如果耐久度已经为0，直接返回错误消息
+      // 如果耐久度已经为0，直接禁止钓鱼
       if (rodDurability <= 0) {
-        await e.reply([segment.at(e.user_id), '\n你的鱼竿已经完全损坏了！需要等待720秒才能继续钓鱼。'])
-        let timeSet = timerManager.createTimer(e.user_id, 720)
-        timeSet.start()
+        await e.reply([segment.at(e.user_id), '\n你的鱼竿已经完全损坏了！无法继续钓鱼，请购买鱼竿修复工具进行修复。'])
         delete status[key]
         return true
       }

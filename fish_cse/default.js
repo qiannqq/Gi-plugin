@@ -59,11 +59,8 @@ export class fish_cse {
         
         await e.reply(`炸弹爆炸损坏了你的鱼竿！耐久度从${currentDurability}%降低到${newDurability}%`)
         
-        // 如果耐久度为0，增加额外冷却时间
+        // 如果耐久度为0，则发送提示
         if (newDurability <= 0) {
-            let { config } = getconfig(`config`, `config`)
-            let timeSet = timerManager.createTimer(e.user_id, config.fishcd + 720)
-            timeSet.start()
             await e.reply(`你的鱼竿已经完全损坏了！需要额外等待720秒才能继续钓鱼。`)
         }
     }
