@@ -245,46 +245,51 @@ class Fish {
      * @param {number} uid 用户QQ
      */
     async get_fishing_rod_durability(uid) {
-        let durability = await redis.get(`Fishing:${uid}:rod_durability`)
-        if (!durability) {
-            // 默认耐久度为100%
-            durability = 100
-            await redis.set(`Fishing:${uid}:rod_durability`, durability)
-        }
-        return Number(durability)
+    const key = `Fishing:${uid}:rod_durability`
+    let val = await redis.get(key)
+
+    if (val === null) {// 新用户
+        await redis.set(key, 100)
+        return 100
+    }
+
+    // 如果是整数直接返回
+    if (/^\d+$/.test(val)) return Number(val)
+
+    // 检测超长小数（≥4 位）
+    if (/^\d+\.\d{4,}$/.test(val)) {
+        const fixed = Math.max(0, Math.min(100, Math.round(Number(val))))
+        await redis.set(key, fixed)     // 立即回写整数
+        logger.mark(`[Fishing] 自动净化 ${uid} 的鱼竿耐久度 ${val} → ${fixed}`)
+        return fixed
+    }
+
+    // 普通小数（1~3 位）直接四舍五入一次，也回写
+    const rounded = Math.max(0, Math.min(100, Math.round(Number(val))))
+    await redis.set(key, rounded)
+    return rounded
     }
 
     /**
      * 设置鱼竿耐久度
-     * @param {number} uid 用户QQ
-     * @param {number} durability 耐久度百分比
      */
     async set_fishing_rod_durability(uid, durability) {
-        await redis.set(`Fishing:${uid}:rod_durability`, durability)
-        return true
+    durability = Math.max(0, Math.min(100, Math.round(durability)))
+    await redis.set(`Fishing:${uid}:rod_durability`, durability)
+    return true
     }
 
     /**
-     * 减少鱼竿耐久度
-     * @param {number} uid 用户QQ
-     * @param {number} amount 减少的百分比，如果为0则使用随机区间
-     * @param {boolean} random 是否使用随机耐久度减少
-     * @param {number} min 随机区间最小值（百分比）
-     * @param {number} max 随机区间最大值（百分比）
+     * 减少耐久度（amount 支持整数或随机整数百分点）
      */
-    async reduce_fishing_rod_durability(uid, amount = 0, random = false, min = 0.1, max = 10) {
-        let currentDurability = await this.get_fishing_rod_durability(uid)
-        
-        let reductionAmount = amount
-        if (random) {
-            // 生成随机减少量，保留小数点后两位
-            reductionAmount = Math.round((Math.random() * (max - min) + min) * 100) / 100
-        }
-        
-        let newDurability = Math.max(0, currentDurability - reductionAmount)
-        await this.set_fishing_rod_durability(uid, newDurability)
-        return newDurability
+    async reduce_fishing_rod_durability(uid, amount = 0, random = false, min = 1, max = 10) {
+    const cur = await this.get_fishing_rod_durability(uid) // 已保证整数
+    const delta = random
+        ? Math.floor(Math.random() * (max - min + 1)) + min
+        : Math.round(amount)
+    const next = Math.max(0, cur - delta)
+    await this.set_fishing_rod_durability(uid, next)
+    return next
     }
-
 }
 export default new Fish
