@@ -88,6 +88,12 @@ git clone --depth=1 https://github.com/qiannqq/Gi-plugin.git ./plugins/Gi-plugin
 | [TRSS-Yunzai](https://gitee.com/TimeRainStarSky/Yunzai) | Yunzai多协议版 | [@时雨星空](https://gitee.com/TimeRainStarSky) |
 | [Yunzai-Bot 索引库](https://gitee.com/yhArcadia/Yunzai-Bot-plugins-index) | 云崽相关内容索引库 | [@渔火Arcadia](https://gitee.com/yhArcadia) |
 
+#### 项目维护
+| Nickname | 描述 |
+|-----|-----|
+| [@皮梦](https://gitee.com/pimeng) | 空间站成员，该插件目前的主要维护者 |
+| [@千奈千祁](https://gitee.com/qiannqq) | 空间站成员，该插件的原作者，目前已摆烂 |
+
 #### 致谢
 | Nickname | 贡献 |
 |-----|-----|
@@ -102,7 +108,6 @@ git clone --depth=1 https://github.com/qiannqq/Gi-plugin.git ./plugins/Gi-plugin
 #### 感谢赞助
 | Nickname |
 |---|
-| 皮梦 |
 | 爱发电用户_pRBn |
 | 休比 |
 | 枭 |
