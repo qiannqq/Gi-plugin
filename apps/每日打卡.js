@@ -162,7 +162,7 @@ export class meiridaka extends plugin {
             return;
         }
         const zhi = Math.floor(Math.random() * 101);
-        console.log(zhi);
+        // console.log(zhi);
         const { img } = await image(e, 'mrdk', 'mrdk', {
           zhi,
         })
