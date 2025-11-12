@@ -22,7 +22,7 @@ export class example2 extends plugin {
        let { img } = await image(e, 'help', 'help', {
             saveId: 'help',
             cwd: _path,
-            genshinPath: `${_path}/plugins/genshin/resources/`,
+            iconPath: `${_path}/plugins/Gi-plugin/resources/img/icons`,
             helpData: config,
             version: GiPluginVersion
        })

@@ -59,7 +59,7 @@ export default new class GiInit {
     async loadPlp() {
         let resourcesFolderPath = './plugins/Gi-plugin/resources'
         let plpFilePath = `${resourcesFolderPath}/plp.txt`
-        console.log(resourcesFolderPath)
+        // console.log(resourcesFolderPath)
         if (!fs.existsSync(resourcesFolderPath)) {
           fs.mkdirSync(resourcesFolderPath);
         }
