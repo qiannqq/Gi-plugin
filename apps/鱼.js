@@ -558,7 +558,7 @@ export class Gi_yu extends plugin {
       // 如果耐久度减少后为0，增加720秒冷却时间并在钓鱼文案后发送损坏消息
       if (newDurability <= 0) {
         additionalCD = 720
-        await e.reply([segment.at(e.user_id), '\n你的鱼竿已经完全损坏了！需要额外等待720秒才能继续钓鱼。'])
+        await e.reply([segment.at(e.user_id), '\n你的鱼竿已经完全损坏了！'])
       }
       
       let totalCD = config.fishcd + additionalCD

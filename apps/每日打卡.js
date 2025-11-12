@@ -147,96 +147,94 @@ export class meiridaka extends plugin {
       return true;
     }
     async 每日打卡(e) {
-      logger.mark(e.user_id)
-        //获取当前日期
-        const date_time = await Gimodel.date_time()
-        let date_time2 = await redis.get(`Yunzai:meiridaka3qn:${e.user_id}_daka`);date_time2 = JSON.parse(date_time2);//获取用户最后一次打卡日期
-        const zhi1 = await redis.get(`Yunzai:meiridakazhi:${e.user_id}_daka`);//获取用户最后一次打卡的幸运值
-        //判断该用户的上一次抽取时间是否是今天
-        if (date_time === date_time2) {
-            let msg = [
-                segment.at(e.user_id),
-                `\n你今天已经打过卡了喵~\n你今天的幸运值是`+zhi1+`，可别再忘掉哦喵~`
-            ]
-            e.reply(msg)
-            return;
-        }
-        const zhi = Math.floor(Math.random() * 101);
-        // console.log(zhi);
-        const { img } = await image(e, 'mrdk', 'mrdk', {
-          zhi,
-        })
-        let msg = [segment.at(e.user_id),
-          `\n你今天的幸运值是……`,
-          img
-        ]
-        let { config } = getconfig(`config`, `config`)
-        if (zhi >= config.mrdkOH){
-          let date_time3 = await redis.get(`Yunzai:ohuangriqi_daka`);date_time3 = JSON.parse(date_time3); //获取上一次欧皇诞生时间
-          if (date_time3 !== date_time){ //判断上一次欧皇诞生时间是否为今天
-            msg = [segment.at(e.user_id),
-              `\n你今天的幸运值是……\n`,
-              img,
-              `恭喜你成为今天首个${config.mrdkOH}幸运值以上的欧皇！`
-            ]
-            redis.set(`Yunzai:ohuangzhi_daka`, JSON.stringify(zhi)); //写入幸运值
-            redis.set(`Yunzai:ohuangname_daka`, JSON.stringify(e.nickname));//写入欧皇名字
-            redis.set(`Yunzai:ohuangqq_daka`, JSON.stringify(e.user_id));//写入欧皇的qq号
-            redis.set(`Yunzai:ohuangqqun_daka`, JSON.stringify(e.group_id));//写入欧皇诞生的群号
-            redis.set(`Yunzai:ohuangriqi_daka`, JSON.stringify(date_time));//写入欧皇诞生的时间
-          }
-        } else if (zhi <= config.mrdkFQ){
-          let date_time3 = await redis.get(`Yunzai:fqiuriqi_daka`);date_time3 = JSON.parse(date_time3);//获取：时间
-          if(date_time3 !== date_time){//判断：日期
-            msg = [segment.at(e.user_id),
-              `\n你今天的幸运值是……\n`,
-              img,
-              `恭喜你成为今天首个${config.mrdkFQ}幸运值以下的非酋！`
-            ]
-            redis.set(`Yunzai:fqiuzhi_daka`, JSON.stringify(zhi));//写入：幸运值
-            redis.set(`Yunzai:fqiuname_daka`, JSON.stringify(e.nickname));//写入：非酋名字
-            redis.set(`Yunzai:fqiuqq_daka`, JSON.stringify(e.user_id));//写入：非酋QQ
-            redis.set(`Yunzai:fqiuqqun_daka`, JSON.stringify(e.group_id));//写入：非酋groupid
-            redis.set(`Yunzai:fqiuriqi_daka`, JSON.stringify(date_time));//写入：非酋日期
-          }
-        } else if(zhi <= 10) {
-          const fujia = "嗯...看起来你今天的幸运值很低，不过不要丧失对生活的希望哦喵~";
-          msg = [segment.at(e.user_id),
-            `\n你今天的幸运值是……`,
-            img,
-            fujia
+      //获取当前日期
+      const date_time = await Gimodel.date_time()
+      let date_time2 = await redis.get(`Yunzai:meiridaka3qn:${e.user_id}_daka`);date_time2 = JSON.parse(date_time2);//获取用户最后一次打卡日期
+      const zhi1 = await redis.get(`Yunzai:meiridakazhi:${e.user_id}_daka`);//获取用户最后一次打卡的幸运值
+      //判断该用户的上一次抽取时间是否是今天
+      if (date_time === date_time2) {
+          let msg = [
+              segment.at(e.user_id),
+              `\n你今天已经打过卡了喵~\n你今天的幸运值是`+zhi1+`，可别再忘掉哦喵~`
           ]
+          e.reply(msg)
+          return;
+      }
+      const zhi = Math.floor(Math.random() * 101);
+      const { img } = await image(e, 'mrdk', 'mrdk', {
+        zhi,
+      })
+      let msg = [segment.at(e.user_id),
+        `\n你今天的幸运值是……`,
+        img
+      ]
+      let { config } = getconfig(`config`, `config`)
+      if (zhi >= config.mrdkOH){
+        let date_time3 = await redis.get(`Yunzai:ohuangriqi_daka`);date_time3 = JSON.parse(date_time3); //获取上一次欧皇诞生时间
+        if (date_time3 !== date_time){ //判断上一次欧皇诞生时间是否为今天
+          msg = [segment.at(e.user_id),
+            `\n你今天的幸运值是……\n`,
+            img,
+            `恭喜你成为今天首个${config.mrdkOH}幸运值以上的欧皇！`
+          ]
+          redis.set(`Yunzai:ohuangzhi_daka`, JSON.stringify(zhi)); //写入幸运值
+          redis.set(`Yunzai:ohuangname_daka`, JSON.stringify(e.nickname));//写入欧皇名字
+          redis.set(`Yunzai:ohuangqq_daka`, JSON.stringify(e.user_id));//写入欧皇的qq号
+          redis.set(`Yunzai:ohuangqqun_daka`, JSON.stringify(e.group_id));//写入欧皇诞生的群号
+          redis.set(`Yunzai:ohuangriqi_daka`, JSON.stringify(date_time));//写入欧皇诞生的时间
         }
-        redis.set(`Yunzai:meiridaka3qn:${e.user_id}_daka`, JSON.stringify(date_time));//将当前日期写入redis防止重复抽取
-        redis.set(`Yunzai:meiridakazhi:${e.user_id}_daka`, JSON.stringify(zhi));//将打卡获取的幸运值写入redis
-        e.reply(msg)
-        let zhidata
-        if(!fs_.existsSync(`plugins/Gi-plugin/resources/mrdk/${e.user_id}.txt`)){
-          zhidata = ``
-          await Gimodel.mdfile(`plugins/Gi-plugin/resources/mrdk`, `${e.user_id}.txt`)
-        } else {
-          zhidata = await fs.readFile(`plugins/Gi-plugin/resources/mrdk/${e.user_id}.txt`, `utf-8`)
+      } else if (zhi <= config.mrdkFQ){
+        let date_time3 = await redis.get(`Yunzai:fqiuriqi_daka`);date_time3 = JSON.parse(date_time3);//获取：时间
+        if(date_time3 !== date_time){//判断：日期
+          msg = [segment.at(e.user_id),
+            `\n你今天的幸运值是……\n`,
+            img,
+            `恭喜你成为今天首个${config.mrdkFQ}幸运值以下的非酋！`
+          ]
+          redis.set(`Yunzai:fqiuzhi_daka`, JSON.stringify(zhi));//写入：幸运值
+          redis.set(`Yunzai:fqiuname_daka`, JSON.stringify(e.nickname));//写入：非酋名字
+          redis.set(`Yunzai:fqiuqq_daka`, JSON.stringify(e.user_id));//写入：非酋QQ
+          redis.set(`Yunzai:fqiuqqun_daka`, JSON.stringify(e.group_id));//写入：非酋groupid
+          redis.set(`Yunzai:fqiuriqi_daka`, JSON.stringify(date_time));//写入：非酋日期
         }
-        if(!fs_.existsSync(`plugins/Gi-plugin/resources/mrdk/${date_time}.json`)){
-          await fs.writeFile(`plugins/Gi-plugin/resources/mrdk/${date_time}.json`, ``, `utf-8`)
-        }
-        let today_mrdkdata = await fs.readFile(`plugins/Gi-plugin/resources/mrdk/${date_time}.json`, `utf-8`)
-        if(today_mrdkdata == ``){
-          today_mrdkdata = []
-        } else {
-          today_mrdkdata = JSON.parse(today_mrdkdata)
-        }
-        let username;
-        if(!e.nickname){
-          username = e.member.nickname
-        } else if(!e.member || !e.member.nickname){
-          username = e.sender.nickname
-        }
-        today_mrdkdata.push({user_id: e.user_id, user_img: `https://q1.qlogo.cn/g?b=qq&s=100&nk=${e.user_id}`, user_name: username, user_luckvalue: zhi})
-        today_mrdkdata = JSON.stringify(today_mrdkdata, null, 3)
-        await fs.writeFile(`plugins/Gi-plugin/resources/mrdk/${date_time}.json`, today_mrdkdata, `utf-8`)
-        await fs.writeFile(`plugins/Gi-plugin/resources/mrdk/${e.user_id}.txt`, `日期：${date_time}；幸运值${zhi}\n${zhidata}`, `utf-8`)
-        return true;//结束运行
+      } else if(zhi <= 10) {
+        const fujia = "嗯...看起来你今天的幸运值很低，不过不要丧失对生活的希望哦喵~";
+        msg = [segment.at(e.user_id),
+          `\n你今天的幸运值是……`,
+          img,
+          fujia
+        ]
+      }
+      redis.set(`Yunzai:meiridaka3qn:${e.user_id}_daka`, JSON.stringify(date_time));//将当前日期写入redis防止重复抽取
+      redis.set(`Yunzai:meiridakazhi:${e.user_id}_daka`, JSON.stringify(zhi));//将打卡获取的幸运值写入redis
+      e.reply(msg)
+      let zhidata
+      if(!fs_.existsSync(`plugins/Gi-plugin/resources/mrdk/${e.user_id}.txt`)){
+        zhidata = ``
+        await Gimodel.mdfile(`plugins/Gi-plugin/resources/mrdk`, `${e.user_id}.txt`)
+      } else {
+        zhidata = await fs.readFile(`plugins/Gi-plugin/resources/mrdk/${e.user_id}.txt`, `utf-8`)
+      }
+      if(!fs_.existsSync(`plugins/Gi-plugin/resources/mrdk/${date_time}.json`)){
+        await fs.writeFile(`plugins/Gi-plugin/resources/mrdk/${date_time}.json`, ``, `utf-8`)
+      }
+      let today_mrdkdata = await fs.readFile(`plugins/Gi-plugin/resources/mrdk/${date_time}.json`, `utf-8`)
+      if(today_mrdkdata == ``){
+        today_mrdkdata = []
+      } else {
+        today_mrdkdata = JSON.parse(today_mrdkdata)
+      }
+      let username;
+      if(!e.nickname){
+        username = e.member.nickname
+      } else if(!e.member || !e.member.nickname){
+        username = e.sender.nickname
+      }
+      today_mrdkdata.push({user_id: e.user_id, user_img: `https://q1.qlogo.cn/g?b=qq&s=100&nk=${e.user_id}`, user_name: username, user_luckvalue: zhi})
+      today_mrdkdata = JSON.stringify(today_mrdkdata, null, 3)
+      await fs.writeFile(`plugins/Gi-plugin/resources/mrdk/${date_time}.json`, today_mrdkdata, `utf-8`)
+      await fs.writeFile(`plugins/Gi-plugin/resources/mrdk/${e.user_id}.txt`, `日期：${date_time}；幸运值${zhi}\n${zhidata}`, `utf-8`)
+      return true;//结束运行
     }
     async 今日欧皇(e) {
         //获取当前日期
@@ -264,7 +262,6 @@ export class meiridaka extends plugin {
         //if(e.at == undefined) return true;
         if(message.text !== `让我看看你的卡`) return true;
         if(at == `undefined`) return true;
-        logger.mark(at)
         //获取当前日期
         const date_time = await Gimodel.date_time()
         let date_time2 = await redis.get(`Yunzai:meiridaka3qn:${e.at}_daka`);date_time2 = JSON.parse(date_time2);
