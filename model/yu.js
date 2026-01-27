@@ -18,10 +18,44 @@ class Fish {
     async get_fish_reservoir(uid) {
         let { config } = getconfig('config', 'config')
         let fishArray = []
+        let rareFishArray = []
+        
+        // 分离普通鱼和稀有鱼
         for (let item of config.fish_sale) {
-            fishArray.push(item.type)
+            // 稀有鱼判断：价格大于等于45
+            if (item.price >= 45) {
+                rareFishArray.push(item.type)
+            } else {
+                fishArray.push(item.type)
+            }
         }
+        
         fishArray.push('特殊事件')
+        
+        // 检查用户是否有幸运状态
+        if (uid) {
+            let luckyState = JSON.parse(await redis.get(`Fishing:${uid}_lucky_state`))
+            if (luckyState && luckyState.remaining > 0) {
+                // 减少幸运状态剩余次数
+                luckyState.remaining--
+                if (luckyState.remaining <= 0) {
+                    await redis.del(`Fishing:${uid}_lucky_state`)
+                } else {
+                    await redis.set(`Fishing:${uid}_lucky_state`, JSON.stringify(luckyState))
+                }
+                
+                // 幸运状态下20%概率生成稀有鱼
+                if (rareFishArray.length > 0 && Math.random() < 0.2) {
+                    return rareFishArray[Math.floor(Math.random() * rareFishArray.length)]
+                }
+            }
+        }
+        
+        // 普通情况下检查是否生成稀有鱼
+        if (uid && rareFishArray.length > 0 && Math.random() < 0.05) {
+            return rareFishArray[Math.floor(Math.random() * rareFishArray.length)]
+        }
+        
         if(!uid) return fishArray[Math.floor(Math.random() * fishArray.length)]
         let user_random_pool = []
         try {
