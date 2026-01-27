@@ -16,11 +16,15 @@ export class Gi_yu extends plugin {
           fnc: 'diaoyu'
         },
         {
+          reg: '^(#|/)?收杆$',
+          fnc: 'shougan'
+        },
+        {
           reg: '^(#|/)?(我的)?(水桶|🪣)$',
           fnc: 'user_bucket'
         },
         {
-          reg: '^(#|\/)?出售(.*)\*(.*)$',
+          reg: '^(#|\\/)?出售(.*)\\*(.*)$',
           fnc: '出售'
         },
         {
@@ -44,7 +48,7 @@ export class Gi_yu extends plugin {
           fnc: 'sell_all_fish'
         },
         {
-          reg: /^(#|\/)?小卖铺(购买.*)?(\*\d*)?$/,
+          reg: '^(#|/)?小卖铺(购买.*)?(\\*\\d*)?$',
           fnc: 'fish_shop'
         },
         {
@@ -55,12 +59,121 @@ export class Gi_yu extends plugin {
           reg: '^(#|/)?我的(鱼竿|🎣)$',
           fnc: 'my_fishing_info'
         },
+        {
+          reg: '^(#|/)?使用幸运鱼饵$',
+          fnc: 'use_lucky_bait'
+        },
         // {
         //   reg: '^(#|/)?出海钓鱼(.*)$',
         //   fnc: 'fishing_at_sea'
         // }
       ]
     })
+  }
+  
+  async shougan(e) {
+    let userId = e.user_id
+    if (!status[userId] || !status[userId].fishing) {
+      await e.reply('你还没有开始钓鱼呢！')
+      return true
+    }
+    
+    let fishingData = status[userId]
+    clearTimeout(fishingData.fishTimer)
+    
+    if (fishingData.userTimer) {
+      clearTimeout(fishingData.userTimer)
+    }
+    
+    if (fishingData.fishCaught) {
+      let yu = fishingData.fish
+      
+      // 检查是否需要二次收杆
+      if (!fishingData.secondCatch) {
+        let fishPrice = await Fish.get_fish_price(yu)
+        // 如果鱼的价格大于等于15，有30%的概率需要二次收杆
+        if (fishPrice && fishPrice >= 15 && Math.random() < 0.3) {
+          // 保存二次收杆状态
+          fishingData.secondCatch = true
+          fishingData.secondTimer = setTimeout(async () => {
+            await e.reply([segment.at(userId), '鱼挣扎逃脱了！'])
+            let timeSet = timerManager.createTimer(userId, fishingData.totalCD)
+            timeSet.start()
+            delete status[userId]
+          }, 10000)
+          await e.reply([segment.at(userId), '鱼力气很大，正在挣扎！请在10秒内再次发送【#收杆】指令。'])
+          return true
+        }
+      }
+      
+      // 正常收杆
+      let yu_text = await Fish.fishing_text()
+      yu_text = yu_text.replace(/【鱼】/g, yu)
+      yu_text = yu_text.replace(/\n$/g, '')
+      
+      // 检查是否为稀有鱼
+      let { config } = getconfig(`config`, `config`)
+      let isRareFish = false
+      for (let item of config.fish_sale) {
+          if (item.type === yu && item.price >= 45) {
+              isRareFish = true
+              break
+          }
+      }
+      
+      if (isRareFish) {
+          await e.reply([segment.at(userId), '恭喜获得稀有鱼！\n' + yu + ' x 1\n' + yu_text])
+      } else {
+          await e.reply([segment.at(userId), yu_text])
+      }
+      
+      // 处理鱼竿耐久度
+      if (fishingData.newDurability <= 0) {
+        await e.reply([segment.at(userId), '你的鱼竿已经完全损坏了！'])
+      }
+      
+      let totalCD = fishingData.totalCD
+      let timeSet = timerManager.createTimer(userId, totalCD)
+      timeSet.start()
+      
+      await Fish.wr_bucket(userId, yu)
+    } else {
+      await e.reply('鱼还没有上钩呢！')
+    }
+    
+    // 重置状态
+    if (fishingData.secondTimer) {
+      clearTimeout(fishingData.secondTimer)
+    }
+    delete status[userId]
+    return true
+  }
+  
+  async use_lucky_bait(e) {
+    let userId = e.user_id
+    let luckyBait = JSON.parse(await redis.get(`Fishing:${userId}_lucky_bait`))
+    
+    if(!luckyBait || luckyBait.number <= 0) {
+      await e.reply('你没有幸运鱼饵可以使用！')
+      return true
+    }
+    
+    // 减少幸运鱼饵数量
+    luckyBait.number--
+    if(luckyBait.number <= 0) {
+      await redis.del(`Fishing:${userId}_lucky_bait`)
+    } else {
+      await redis.set(`Fishing:${userId}_lucky_bait`, JSON.stringify(luckyBait))
+    }
+    
+    // 设置幸运状态，持续5杆
+    await redis.set(`Fishing:${userId}_lucky_state`, JSON.stringify({ 
+      remaining: 5,
+      probability: 0.2 // 20%概率
+    }))
+    
+    await e.reply('你使用了幸运鱼饵！接下来的5杆中，稀有鱼出现概率提升至20%。')
+    return true
   }
   async fishing_at_sea(e) {
     
@@ -149,7 +262,7 @@ export class Gi_yu extends plugin {
         }
         await e.reply(`你开始了捕鱼……`, false, { recallMsg: 5 })
         await common.sleep(2000)
-        let msgList = [segment.at(e.user_id), `\n捕鱼网捞上来了，你获得了：`]
+        let msgList = [segment.at(e.user_id), `捕鱼网捞上来了，你获得了：`]
         let yuList = {}
         for (let i = 0; i < 7; i++) {
           let yu = await Fish.get_fish()
@@ -224,7 +337,7 @@ export class Gi_yu extends plugin {
         }
       }
       if(await Fish.get_usermoneyInfo(e.user_id) < product_info.price) {
-        await e.reply([segment.at(e.user_id), `\n小卖铺老板疑惑的看向你兜里的${await Fish.get_usermoneyInfo(e.user_id)}个鱼币，你尴尬的笑了笑。`])
+        await e.reply([segment.at(e.user_id), `小卖铺老板疑惑的看向你兜里的${await Fish.get_usermoneyInfo(e.user_id)}个鱼币，你尴尬的笑了笑。`])
         delete status[key]
         return true
       }
@@ -263,7 +376,7 @@ export class Gi_yu extends plugin {
           // 检查鱼竿耐久度是否低于10%
           let rodDurability = await Fish.get_fishing_rod_durability(e.user_id)
           if (rodDurability > 10) {
-            await e.reply([segment.at(e.user_id), '\n你的鱼竿耐久度还高于10%，不需要修复哦~'])
+            await e.reply([segment.at(e.user_id), '你的鱼竿耐久度还高于10%，不需要修复哦~'])
             delete status[key]
             return true
           }
@@ -279,6 +392,18 @@ export class Gi_yu extends plugin {
           }
 
           e.reply(`鱼竿修复成功，耐久度恢复到100%，冷却时间减少到1秒~`)
+          break;
+        case('幸运鱼饵'):
+          let luckyBait = JSON.parse(await redis.get(`Fishing:${e.user_id}_lucky_bait`))
+          if(luckyBait) {
+            var number = luckyBait.number
+          } else {
+            var number = 0
+          }
+          let luckyBaitData = {
+            number: number + 1 * ( buyNumber || 1 )
+          }
+          await redis.set(`Fishing:${e.user_id}_lucky_bait`, JSON.stringify(luckyBaitData))
           break;
         case('捕鱼船票'):
           break;
@@ -324,10 +449,10 @@ export class Gi_yu extends plugin {
     }
     let msg = e.msg.match(/^(#|\/)?修改(钓鱼|🎣)昵称(.*)?$/)
     if(!msg[3]) {
-      e.reply([segment.at(e.user_id), `\n请输入昵称后再尝试修改昵称呢\n例如：#修改🎣昵称张三`])
+      e.reply([segment.at(e.user_id), `请输入昵称后再尝试修改昵称呢\n例如：#修改🎣昵称张三`])
       return true
     }
-    await e.reply([segment.at(e.user_id), `\n修改昵称需要花费30鱼币的改名费，是否继续？\n【#确认支付】`])
+    await e.reply([segment.at(e.user_id), `修改昵称需要花费30鱼币的改名费，是否继续？\n【#确认支付】`])
     this.setContext(`change_nickname_`)
   }
   async change_nickname_(e) {
@@ -383,13 +508,13 @@ export class Gi_yu extends plugin {
     this.finish(`加急治疗_`)
     if(this.e.msg == `#确认支付`) {
       if(await Fish.get_usermoneyInfo(e.user_id) < 5) {
-        await e.reply([segment.at(e.user_id), `\n医生疑惑的看向你兜里的${await Fish.get_usermoneyInfo(e.user_id)}个鱼币，你尴尬的笑了笑。`])
+        await e.reply([segment.at(e.user_id), `医生疑惑的看向你兜里的${await Fish.get_usermoneyInfo(e.user_id)}个鱼币，你尴尬的笑了笑。`])
         return true
       }
       let timeSet = timerManager.createTimer(e.user_id, 3)
       timeSet.start()
       await redis.del(`Fishing:${e.user_id}:shayu`)
-      await e.reply([segment.at(e.user_id), `\n在医生的全力以赴下，你健康的出了院~`])
+      await e.reply([segment.at(e.user_id), `在医生的全力以赴下，你健康的出了院~`])
       await Fish.deduct_money(e.user_id, 5)
       delete status[key]
       return true
@@ -491,7 +616,7 @@ export class Gi_yu extends plugin {
       await e.reply(`你的水桶里好像是空的呢，钓点鱼进来再查看水桶吧！`)
       return true
     }
-    let msgList = [segment.at(e.user_id), `\n你的水桶里有……`]
+    let msgList = [segment.at(e.user_id), `你的水桶里有……`]
     for (let item of playerBucket) {
       if (item.number > 0) {
         msgList.push(`\n${item.fishType} x ${item.number}`)
@@ -504,68 +629,100 @@ export class Gi_yu extends plugin {
     return true
   }
   async diaoyu(e) {
-    // let time = await timerManager.getRemainingTime(e.user_id) 获取该用户的倒计时器
-    // let timeSet = timerManager.createTimer(e.user_id, 120); timeSet.start(); 设置该用户的倒计时器
     let time = await timerManager.getRemainingTime(e.user_id)
     if (!time || time <= 0) {
-      let key = `bucket:${e.user_id}`
-      if(status[key]) return true
+      let userId = e.user_id
+      let key = `bucket:${userId}`
+      if(status[key] || status[userId]) return true
       status[key] = true
 
-      if(await redis.get(`Fishing:${e.user_id}:shayu`)) {
-        redis.del(`Fishing:${e.user_id}:shayu`)
+      if(await redis.get(`Fishing:${userId}:shayu`)) {
+        redis.del(`Fishing:${userId}:shayu`)
       }
       let { config } = getconfig(`config`, `config`)
-      let userBuff = JSON.parse(await redis.get(`Fishing:${e.user_id}_buff`))
+      let userBuff = JSON.parse(await redis.get(`Fishing:${userId}_buff`))
       if(userBuff) {
         if(userBuff.number <= 0) {
-          await redis.del(`Fishing:${e.user_id}_buff`)
+          await redis.del(`Fishing:${userId}_buff`)
         } else {
           userBuff.number = userBuff.number - 1
           config.fishcd = 10
-          await redis.set(`Fishing:${e.user_id}_buff`, JSON.stringify(userBuff))
+          await redis.set(`Fishing:${userId}_buff`, JSON.stringify(userBuff))
         }
       }
       
       // 检查鱼竿耐久度
-      let rodDurability = await Fish.get_fishing_rod_durability(e.user_id)
+      let rodDurability = await Fish.get_fishing_rod_durability(userId)
       let additionalCD = 0
       
       // 如果耐久度已经为0，直接禁止钓鱼
       if (rodDurability <= 0) {
-        await e.reply([segment.at(e.user_id), '\n你的鱼竿已经完全损坏了！无法继续钓鱼，请购买鱼竿修复工具进行修复。'])
+        await e.reply([segment.at(userId), '你的鱼竿已经完全损坏了！无法继续钓鱼，请购买鱼竿修复工具进行修复。'])
         delete status[key]
         return true
       }
       
       // 减少随机耐久度（0.1%-10%）
-      let newDurability = await Fish.reduce_fishing_rod_durability(e.user_id, 0, true, 0.1, 10)
+      let newDurability = await Fish.reduce_fishing_rod_durability(userId, 0, true, 0.1, 10)
       
-      let yu = await Fish.get_fish(e.user_id)
-      await e.reply(`你开始了钓鱼……`, false, { recallMsg: 5 })
-      await common.sleep(2000)
+      let yu = await Fish.get_fish(userId)
+      // 检查用户是否有幸运状态
+      let luckyState = JSON.parse(await redis.get(`Fishing:${userId}_lucky_state`))
+      let luckyMsg = ''
+      if (luckyState && luckyState.remaining > 0) {
+          luckyMsg = `\n稀有鱼出现概率增加（剩余${luckyState.remaining}杆）`
+      }
+      await e.reply(`你开始了钓鱼……\n等待鱼上钩中……${luckyMsg}`, false, { recallMsg: 5 })
       
       if (yu == `特殊事件`) {
         await this.特殊事件(e)
         delete status[key]
         return true
       }
-      let yu_text = await Fish.fishing_text()
-      yu_text = yu_text.replace(/【鱼】/g, yu)
-      yu_text = yu_text.replace(/\n$/g, '')
-      await e.reply([segment.at(e.user_id), '\n' + yu_text])
       
-      // 如果耐久度减少后为0，增加720秒冷却时间并在钓鱼文案后发送损坏消息
-      if (newDurability <= 0) {
-        additionalCD = 720
-        await e.reply([segment.at(e.user_id), '\n你的鱼竿已经完全损坏了！'])
+      // 计算随机上钩时间（0-60秒）
+      let hookTime = Math.floor(Math.random() * 60000)
+      let isAirForce = Math.random() < 0.1 // 10%概率空军
+      
+      // 重置状态
+      delete status[key]
+      
+      // 保存钓鱼状态
+      status[userId] = {
+        fishing: true,
+        fishCaught: false,
+        fish: yu,
+        newDurability: newDurability,
+        additionalCD: additionalCD,
+        totalCD: config.fishcd + additionalCD
       }
       
-      let totalCD = config.fishcd + additionalCD
-      let timeSet = timerManager.createTimer(e.user_id, totalCD)
-      timeSet.start()
-      delete status[key]
-      await Fish.wr_bucket(e.user_id, yu)
+      // 设置鱼上钩定时器
+      status[userId].fishTimer = setTimeout(async () => {
+        if (isAirForce) {
+          await e.reply([segment.at(userId), '空军！一条鱼都没有钓到。'])
+          let timeSet = timerManager.createTimer(userId, config.fishcd + additionalCD)
+          timeSet.start()
+          delete status[userId]
+        } else {
+          // 生成10-30秒的随机时间
+          let userTimeout = 10000 + Math.floor(Math.random() * 20000)
+          let timeoutSeconds = Math.floor(userTimeout / 1000)
+          
+          await e.reply([segment.at(userId), `鱼上钩了！请在${timeoutSeconds}秒内发送【#收杆】指令。`])
+          status[userId].fishCaught = true
+          status[userId].userTimeout = userTimeout
+          
+          // 设置用户操作超时定时器
+          status[userId].userTimer = setTimeout(async () => {
+            await e.reply([segment.at(userId), '鱼跑掉了！'])
+            let timeSet = timerManager.createTimer(userId, config.fishcd + additionalCD)
+            timeSet.start()
+            delete status[userId]
+          }, userTimeout)
+        }
+      }, hookTime)
+      
       return true
     } else {
       if(await redis.get(`Fishing:${e.user_id}:shayu`)) {
