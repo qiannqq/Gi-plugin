@@ -21,11 +21,11 @@ export class daanzhishu extends plugin {
         wenti = wenti.replace(/#?答案之书/g, '')
         const randomIndex = Math.floor(Math.random() * config.book_of_answers.length)
         const daan = config.book_of_answers[randomIndex];
-        let msg =
-`${e.nickname}
-你的问题是:${wenti}
-答案之书给出的答案是：
-【${daan}】`
+        let msg = ''
+        if (e.nickname) {
+            msg += `${e.nickname}\n`
+        }
+        msg += `你的问题是:${wenti}\n答案之书给出的答案是：\n【${daan}】`
         e.reply(msg, true)
         return true
     }
