@@ -41,6 +41,12 @@
     - icon: paimon
       title: '加急治疗'
       desc: '如果你被鲨鱼咬伤了，那就来试试医院新推出的加急治疗服务吧！'
+    - icon: paimon
+      title: '收杆'
+      desc: '当鱼上钩后，使用此指令收杆获得鱼~'
+    - icon: paimon
+      title: '使用幸运鱼饵'
+      desc: '使用幸运鱼饵，提升稀有鱼出现概率至20%，持续5杆~'
 - group: 打卡
   list:
     - icon: paimon
