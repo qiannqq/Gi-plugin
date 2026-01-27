@@ -1,20 +1,11 @@
-#是否开启自动更新
 autoupdate: true
-#每日打卡达成当天首个欧皇阈值(N<100)
 mrdkOH: 95
-#每日打卡达成当天首个非酋阈值(0<N)
 mrdkFQ: 5
-#每日自动更新时间(cron表达式) (什么？不会改？百度搜索cron在线生成cron表达式)
-updatetime: '0 20 1 * * ?'
-#每日可捡漂流瓶次数
+updatetime: 0 20 1 * * ?
 Jplp: 1
-#每日可扔漂流瓶次数
 Rplp: 1
-#是否开启漂流瓶评论区
 dbcomment: true
-#在本地没有漂流瓶的情况下是否从API获取漂流瓶 (警告：来自API的漂流瓶的信息不受审核，可能会获取到违规内容，请谨慎开启)
 plpapi: false
-#钓竿冷却时间，单位秒
 fishcd: 120
 fish_sale:
   - type: 🐟
