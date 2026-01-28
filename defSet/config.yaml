@@ -127,3 +127,23 @@ fish_sale:
     price: 0
   - type: 🕶️
     price: 0
+  - type: 🌟
+    price: 45
+  - type: 💎
+    price: 75
+  - type: 🦄
+    price: 60
+  - type: 👑
+    price: 120
+  - type: 🦚
+    price: 150
+  - type: 凤凰鱼
+    price: 180
+  - type: 真龙鱼
+    price: 240
+  - type: 麒麟鱼
+    price: 210
+  - type: 玄武鱼
+    price: 195
+  - type: 白虎鱼
+    price: 225
