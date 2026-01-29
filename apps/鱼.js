@@ -109,7 +109,6 @@ export class Gi_yu extends plugin {
       // 正常收杆
       let yu_text = await Fish.fishing_text()
       yu_text = yu_text.replace(/【鱼】/g, yu)
-      yu_text = yu_text.replace(/\n$/g, '')
       
       // 检查是否为稀有鱼
       let { config } = getconfig(`config`, `config`)
