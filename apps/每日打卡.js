@@ -133,8 +133,8 @@ export class meiridaka extends plugin {
     }
     async 今日非酋(e) {
       const date_time = await Gimodel.date_time()
-      let date_time2 = await redis.get(`Yunzai:fqiuriqi_daka`);date_time2 = JSON.parse(date_time2);
-      if (date_time !== date_time2){
+      let unluckyKingData = JSON.parse(await redis.get(`Yunzai:unluckyKing_data`));
+      if (!unluckyKingData || date_time !== unluckyKingData.date_time){
         let msg = [
           segment.at(e.user_id),
           `\n今天的非酋还没诞生喵~`
@@ -142,10 +142,7 @@ export class meiridaka extends plugin {
         e.reply(msg)
         return;
       }
-      let fqiuname = await redis.get(`Yunzai:fqiuname_daka`);fqiuname = JSON.parse(fqiuname);
-      let fqiuqq = await redis.get(`Yunzai:fqiuqq_daka`);fqiuqq = JSON.parse(fqiuqq);
-      let zhi =  await redis.get(`Yunzai:fqiuzhi_daka`);zhi = JSON.parse(zhi)
-      let msg = [`今日的首个非酋已诞生！！！！\nta的名字：【${fqiuname}】\nta的幸运值是：${zhi} ！！！`]
+      let msg = [`今天的首位非酋是【${unluckyKingData.nickname}】\nta的幸运值只有${unluckyKingData.zhi}这么多呢喵~`]
       e.reply(msg)
       return true;
     }
@@ -165,7 +162,8 @@ export class meiridaka extends plugin {
       }
       let zhi
       if(!luckList[e.user_id] || luckList[e.user_id]?.date_time != date_time) {
-        zhi = Gimodel.getReadmeNumber(101)
+        // zhi = Gimodel.getReadmeNumber(101)
+        zhi = 99
         if(zhi <= 10) {
           luckList[e.user_id] = {
             zhi,
@@ -189,39 +187,45 @@ export class meiridaka extends plugin {
       ]
       let { config } = getconfig(`config`, `config`)
       if (zhi >= config.mrdkOH){
-        let date_time3 = await redis.get(`Yunzai:ohuangriqi_daka`);date_time3 = JSON.parse(date_time3); //获取上一次欧皇诞生时间
-        if (date_time3 !== date_time){ //判断上一次欧皇诞生时间是否为今天
+        let luckKingData = JSON.parse(await redis.get(`Yunzai:luckyKing_data`)); //获取上一次欧皇诞生时间
+        if (!luckKingData || date_time !== luckKingData.date_time){ //判断上一次欧皇诞生时间是否为今天
           msg = [segment.at(e.user_id),
             `\n你今天的幸运值是……\n`,
             img,
-            `恭喜你成为今天首个${config.mrdkOH}幸运值以上的欧皇！`
+            `恭喜你成为今天首个${config.mrdkOH}幸运值以上的欧皇喵！`
           ]
-          redis.set(`Yunzai:ohuangzhi_daka`, JSON.stringify(zhi)); //写入幸运值
-          redis.set(`Yunzai:ohuangname_daka`, JSON.stringify(e.nickname));//写入欧皇名字
-          redis.set(`Yunzai:ohuangqq_daka`, JSON.stringify(e.user_id));//写入欧皇的qq号
-          redis.set(`Yunzai:ohuangqqun_daka`, JSON.stringify(e.group_id));//写入欧皇诞生的群号
-          redis.set(`Yunzai:ohuangriqi_daka`, JSON.stringify(date_time));//写入欧皇诞生的时间
+          // dsv3告诉我欧皇的英文是lucky king，不管了就这个名字了
+          let luckyKingData = {
+            zhi,
+            nickname: e.nickname,
+            user_id: e.user_id,
+            group_id: e.group_id,
+            date_time
+          }
+          redis.set(`Yunzai:luckyKing_data`, JSON.stringify(luckyKingData));
         }
       } else if (zhi <= config.mrdkFQ){
-        let date_time3 = await redis.get(`Yunzai:fqiuriqi_daka`);date_time3 = JSON.parse(date_time3);//获取：时间
-        if(date_time3 !== date_time){//判断：日期
+        let unluckyKingData = JSON.parse(await redis.get(`Yunzai:unluckyKing_data`)); //获取上一次非酋诞生时间
+        if (!unluckyKingData || date_time !== unluckyKingData.date_time){ //判断上一次非酋诞生时间是否为今天
           msg = [segment.at(e.user_id),
             `\n你今天的幸运值是……\n`,
             img,
-            `恭喜你成为今天首个${config.mrdkFQ}幸运值以下的非酋！`
+            `恭喜你成为今天首个${config.mrdkFQ}幸运值以下的非酋喵！`
           ]
-          redis.set(`Yunzai:fqiuzhi_daka`, JSON.stringify(zhi));//写入：幸运值
-          redis.set(`Yunzai:fqiuname_daka`, JSON.stringify(e.nickname));//写入：非酋名字
-          redis.set(`Yunzai:fqiuqq_daka`, JSON.stringify(e.user_id));//写入：非酋QQ
-          redis.set(`Yunzai:fqiuqqun_daka`, JSON.stringify(e.group_id));//写入：非酋groupid
-          redis.set(`Yunzai:fqiuriqi_daka`, JSON.stringify(date_time));//写入：非酋日期
+          let unluckyKingData = {
+            zhi,
+            nickname: e.nickname,
+            user_id: e.user_id,
+            group_id: e.group_id,
+            date_time
+          }
+          redis.set(`Yunzai:unluckyKing_data`, JSON.stringify(unluckyKingData));
         }
       } else if(zhi <= 10) {
-        const fujia = "嗯...看起来你今天的幸运值很低，不过不要丧失对生活的希望哦喵~";
         msg = [segment.at(e.user_id),
           `\n你今天的幸运值是……`,
           img,
-          fujia
+          "嗯...看起来你今天的幸运值很低，不过不要丧失对生活的希望哦喵~"
         ]
       }
       redis.set(`Yunzai:meiridaka3qn:${e.user_id}_daka`, JSON.stringify(date_time));//将当前日期写入redis防止重复抽取
@@ -258,8 +262,8 @@ export class meiridaka extends plugin {
     async 今日欧皇(e) {
         //获取当前日期
         const date_time = await Gimodel.date_time()
-        let date_time2 = await redis.get(`Yunzai:ohuangriqi_daka`);date_time2 = JSON.parse(date_time2);//获取欧皇最后一次诞生时间
-        if (date_time !== date_time2){
+        let luckKingData = JSON.parse(await redis.get(`Yunzai:luckyKing_data`));
+        if (!luckKingData || date_time !== luckKingData.date_time){
           let msg = [
             segment.at(e.user_id),
             `\n今天的欧皇还没诞生喵~`
@@ -267,10 +271,8 @@ export class meiridaka extends plugin {
           e.reply(msg)
           return;
         }
-        let ohuangname = await redis.get(`Yunzai:ohuangname_daka`);ohuangname = JSON.parse(ohuangname);//获取欧皇的名字
-        let ohuangqq = await redis.get(`Yunzai:ohuangqq_daka`);ohuangqq = JSON.parse(ohuangqq);//获取欧皇QQ号
-        let zhi =  await redis.get(`Yunzai:ohuangzhi_daka`);zhi = JSON.parse(zhi)
-        let msg = [`今日的首个欧皇已诞生！！！！\nta的名字：【${ohuangname}】\nta的QQ号：(${ohuangqq})\nta的幸运值是：${zhi} ！！！`]
+        let zhi = luckKingData.zhi;
+        let msg = [`今天的首位欧皇是【${luckKingData.nickname}】~\nta的幸运值有${zhi}那么多呢喵！`]
         e.reply(msg)
         return true;
       }
