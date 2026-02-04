@@ -162,8 +162,7 @@ export class meiridaka extends plugin {
       }
       let zhi
       if(!luckList[e.user_id] || luckList[e.user_id]?.date_time != date_time) {
-        // zhi = Gimodel.getReadmeNumber(101)
-        zhi = 99
+        zhi = Gimodel.getReadmeNumber(101)
         if(zhi <= 10) {
           luckList[e.user_id] = {
             zhi,
