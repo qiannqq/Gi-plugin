@@ -62,7 +62,7 @@ class Gimodel {
    * @param {number} b 基于获取的数字再增加，默认0
    * @returns number
    */
-  async getReadmeNumber(a, b = 0) {
+  getReadmeNumber(a, b = 0) {
     return Math.floor(Math.random() * a) + b
   }
   /**
