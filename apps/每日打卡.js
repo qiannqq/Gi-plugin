@@ -2,6 +2,9 @@ import { promises as fs } from 'fs'
 import fs_ from 'fs'
 import { image, getconfig, Gimodel } from '../model/index.js'
 
+// 低于10幸运值的用户列表，用于二次确认
+let luckList = {}
+
 export class meiridaka extends plugin {
     constructor(){
       super({
@@ -160,7 +163,23 @@ export class meiridaka extends plugin {
           e.reply(msg)
           return;
       }
-      const zhi = Math.floor(Math.random() * 101);
+      let zhi
+      if(!luckList[e.user_id] || luckList[e.user_id]?.date_time != date_time) {
+        zhi = Gimodel.getReadmeNumber(101)
+        if(zhi <= 10) {
+          luckList[e.user_id] = {
+            zhi,
+            date_time
+          }
+          return await e.reply([
+            segment.at(e.user_id),
+            `\n你真的要看吗？先说好不许做出任何过激行为喵！（如砸电脑、摔手机或者禁言我）`,
+            `\n你如果真的要看的话，再发一遍"${e.msg}"确认一下喵。`
+          ], true), true
+        }
+      } else {
+        zhi = luckList[e.user_id].zhi
+      }
       const { img } = await image(e, 'mrdk', 'mrdk', {
         zhi,
       })
