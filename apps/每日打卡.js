@@ -163,17 +163,7 @@ export class meiridaka extends plugin {
       let zhi
       if(!luckList[e.user_id] || luckList[e.user_id]?.date_time != date_time) {
         zhi = Gimodel.getReadmeNumber(101);
-        if(zhi <= 10) {
-          luckList[e.user_id] = {
-            zhi,
-            date_time
-          }
-          return await e.reply([
-            segment.at(e.user_id),
-            `\n你真的要看吗？先说好不许做出任何过激行为喵！（如砸电脑、摔手机或者禁言我）`,
-            `\n你如果真的要看的话，再发一遍"${e.msg}"确认一下喵。`
-          ], true), true
-        } else if (Gimodel.getReadmeNumber(101) <= 20) {
+        if(zhi <= 10 || Gimodel.getReadmeNumber(101) <= 20) {
           luckList[e.user_id] = {
             zhi,
             date_time
@@ -256,12 +246,7 @@ export class meiridaka extends plugin {
       } else {
         today_mrdkdata = JSON.parse(today_mrdkdata)
       }
-      let username;
-      if(!e.nickname){
-        username = e.member.nickname
-      } else if(!e.member || !e.member.nickname){
-        username = e.sender.nickname
-      }
+      let username = e.nickname || e.member?.nickname || e.sender?.nickname || String(e.user_id);
       today_mrdkdata.push({user_id: e.user_id, user_img: `https://q1.qlogo.cn/g?b=qq&s=100&nk=${e.user_id}`, user_name: username, user_luckvalue: zhi})
       today_mrdkdata = JSON.stringify(today_mrdkdata, null, 3)
       await fs.writeFile(`plugins/Gi-plugin/resources/mrdk/${date_time}.json`, today_mrdkdata, `utf-8`)
