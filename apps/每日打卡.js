@@ -162,8 +162,18 @@ export class meiridaka extends plugin {
       }
       let zhi
       if(!luckList[e.user_id] || luckList[e.user_id]?.date_time != date_time) {
-        zhi = Gimodel.getReadmeNumber(101)
+        zhi = Gimodel.getReadmeNumber(101);
         if(zhi <= 10) {
+          luckList[e.user_id] = {
+            zhi,
+            date_time
+          }
+          return await e.reply([
+            segment.at(e.user_id),
+            `\n你真的要看吗？先说好不许做出任何过激行为喵！（如砸电脑、摔手机或者禁言我）`,
+            `\n你如果真的要看的话，再发一遍"${e.msg}"确认一下喵。`
+          ], true), true
+        } else if (Gimodel.getReadmeNumber(101) <= 20) {
           luckList[e.user_id] = {
             zhi,
             date_time
