@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        width: 780px;
+        margin: 0;
+        padding: 0;
+        color: #f5f2e8;
+        background-color: #183e35;
+        background-image: radial-gradient(#ffffff0a 1px, transparent 1px);
+        background-size: 12px 12px;
+        font-family: "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+      }
+      .board {
+        min-height: 100vh;
+        padding: 28px;
+      }
+      .turn {
+        margin-bottom: 18px;
+        color: #f5f2e8;
+        font-size: 20px;
+        font-weight: 700;
+      }
+      .grid {
+        display: grid;
+        gap: 10px;
+      }
+      .chip {
+        display: flex;
+        min-height: 84px;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        border: 1px solid #f7dc9c;
+        border-radius: 12px;
+        color: #563c16;
+        background: linear-gradient(145deg, #ffe7a0, #e5ad4c);
+        box-shadow:
+          inset 0 -5px 0 #bd812d,
+          0 4px 0 #091d18;
+      }
+      .chip-symbol {
+        font-size: 27px;
+        font-weight: 900;
+        line-height: 1;
+      }
+      .chip.safe {
+        border-color: #8ad0a2;
+        color: #d9f5df;
+        background: #31724d;
+        box-shadow:
+          inset 0 -5px 0 #23543a,
+          0 4px 0 #091d18;
+      }
+      .chip.bomb,
+      .chip.mine {
+        border-color: #ff9c7a;
+        color: #fff1eb;
+        background: #b84435;
+        box-shadow:
+          inset 0 -5px 0 #812c27,
+          0 4px 0 #091d18;
+      }
+      .chip.mine {
+        background: #814537;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="board">
+      <div class="turn">{{turnText}}</div>
+      <div class="grid" style="grid-template-columns: repeat({{columns}}, 1fr)">
+        {{each chips chip}}
+        <div class="chip {{chip.status}}" aria-label="{{chip.label}}">
+          <span class="chip-symbol">{{chip.symbol}}</span>
+        </div>
+        {{/each}}
+      </div>
+    </main>
+  </body>
+</html>

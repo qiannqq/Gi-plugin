@@ -6,6 +6,23 @@
     - icon: paimon
       title: '捡漂流瓶'
       desc: '捞出一个漂流瓶'
+- group: 薯片排雷
+  list:
+    - icon: paimon
+      title: '开薯片游戏'
+      desc: '创建一局2～6人的薯片排雷游戏'
+    - icon: paimon
+      title: '加入薯片 / 开始薯片'
+      desc: '群内报名；至少2人后由发起人开始布雷'
+    - icon: paimon
+      title: '薯片埋雷 局号 编号'
+      desc: '每位玩家私聊Bot选择1片埋雷，雷位不会公开'
+    - icon: paimon
+      title: '吃薯片 编号'
+      desc: '游戏开始后按顺序选择薯片，踩雷会被淘汰'
+    - icon: paimon
+      title: '薯片状态 / 结束薯片游戏'
+      desc: '查看本群游戏进度；发起人可结束当前游戏'
 - group: 钓鱼
   list:
     - icon: paimon
