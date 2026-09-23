@@ -1,22 +1,86 @@
+import { randomUUID } from "node:crypto"
 import { image } from "../model/index.js"
 
 const REDIS_PREFIX = "GiPlugin:ChipSnack:"
 const GAME_TTL_SECONDS = 6 * 60 * 60
+const GROUP_LOCK_TTL_MS = 60 * 1000
+const GROUP_LOCK_RENEW_MS = 20 * 1000
+const GROUP_LOCK_WAIT_MS = 15 * 1000
+const RENEW_LOCK_SCRIPT =
+  "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('pexpire', KEYS[1], ARGV[2]) else return 0 end"
+const RELEASE_LOCK_SCRIPT =
+  "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end"
 const groupQueues = new Map()
 
+async function acquireGroupLock(groupId) {
+  const lockKey = `${REDIS_PREFIX}lock:${groupId}`
+  const token = randomUUID()
+  const deadline = Date.now() + GROUP_LOCK_WAIT_MS
+
+  while (Date.now() < deadline) {
+    const acquired = await redis.set(lockKey, token, {
+      NX: true,
+      PX: GROUP_LOCK_TTL_MS,
+    })
+    if (acquired === "OK") {
+      let lockLost = false
+      let renewal = Promise.resolve()
+      const timer = setInterval(() => {
+        renewal = renewal
+          .then(async () => {
+            if (lockLost) return
+            const result = await redis.eval(RENEW_LOCK_SCRIPT, {
+              keys: [lockKey],
+              arguments: [token, String(GROUP_LOCK_TTL_MS)],
+            })
+            if (Number(result) !== 1) lockLost = true
+          })
+          .catch(error => {
+            lockLost = true
+            logger.error(`[薯片排雷] 群锁续期失败: ${error.message}`)
+          })
+      }, GROUP_LOCK_RENEW_MS)
+      timer.unref?.()
+
+      return async () => {
+        clearInterval(timer)
+        await renewal
+        const result = await redis.eval(RELEASE_LOCK_SCRIPT, {
+          keys: [lockKey],
+          arguments: [token],
+        })
+        if (lockLost || Number(result) !== 1) {
+          logger.warn(`[薯片排雷] 群 ${groupId} 的分布式锁已失效`)
+        }
+      }
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 50 + Math.floor(Math.random() * 100)))
+  }
+
+  throw new Error(`[薯片排雷] 等待群 ${groupId} 的分布式锁超时`)
+}
+
 async function withGroupLock(groupId, callback) {
-  const previous = groupQueues.get(groupId) || Promise.resolve()
+  const queueKey = String(groupId)
+  const previous = groupQueues.get(queueKey) || Promise.resolve()
   let release
   const current = new Promise(resolve => {
     release = resolve
   })
-  groupQueues.set(groupId, current)
+  groupQueues.set(queueKey, current)
   await previous
+  let releaseDistributedLock
   try {
+    releaseDistributedLock = await acquireGroupLock(queueKey)
     return await callback()
   } finally {
-    release()
-    if (groupQueues.get(groupId) === current) groupQueues.delete(groupId)
+    try {
+      if (releaseDistributedLock) await releaseDistributedLock()
+    } finally {
+      release()
+      if (groupQueues.get(queueKey) === current) groupQueues.delete(queueKey)
+    }
   }
 }
 
@@ -80,6 +144,16 @@ function getChipCount(playerCount) {
   return playerCount * 12
 }
 
+function promoteRandomPlayer(game) {
+  const player = game.players[Math.floor(Math.random() * game.players.length)]
+  game.hostId = player.id
+  return player
+}
+
+function isGroupManager(e) {
+  return ["owner", "admin"].includes(e.sender?.role) || ["owner", "admin"].includes(e.member?.role)
+}
+
 function getColumns(playerCount) {
   return Math.min(6, Math.max(4, playerCount))
 }
@@ -99,7 +173,7 @@ function findNextAliveIndex(game, currentIndex) {
 function makeBoardData(game, revealAll = false) {
   const mineSet = new Set(game.mines)
   const openedSet = new Set(game.opened)
-  const total = getChipCount(game.players.length)
+  const total = game.totalChips || getChipCount(game.players.length)
   const currentPlayer = game.phase === "playing" ? getCurrentPlayer(game) : null
   const phaseText =
     {
@@ -150,6 +224,7 @@ export class Gi_chipSnack extends plugin {
       rule: [
         { reg: "^(#|/)?开薯片游戏$", fnc: "createGame" },
         { reg: "^(#|/)?加入薯片$", fnc: "joinGame" },
+        { reg: "^(#|/)?退出薯片$", fnc: "exitGame" },
         { reg: "^(#|/)?开始薯片$", fnc: "beginPlanting" },
         { reg: "^(#|/)?薯片埋雷\\s+\\d+\\s+\\d+$", fnc: "plantMine" },
         { reg: "^(#|/)?吃薯片\\s*\\d+$", fnc: "eatChip" },
@@ -237,7 +312,7 @@ export class Gi_chipSnack extends plugin {
       }
       await saveGame(groupId, game)
       await e.reply(
-        `薯片游戏已创建\n本局识别号 ${gameCode}\n发送 #加入薯片 报名，2～6 人加入后由发起人发送 #开始薯片`,
+        `薯片游戏已创建\n本局识别号 ${gameCode}\n发送 #加入薯片 报名，2~6 人加入后由发起人发送 #开始薯片\n发送 #退出薯片 可退出本局`,
       )
     })
     return true
@@ -297,6 +372,7 @@ export class Gi_chipSnack extends plugin {
       }
 
       game.phase = "planting"
+      game.totalChips = getChipCount(game.players.length)
       if (!game.gameCode) {
         game.gameCode = await reserveGameCode(groupId)
         if (!game.gameCode) {
@@ -306,17 +382,19 @@ export class Gi_chipSnack extends plugin {
       }
       game.submittedIds = []
       game.mines = []
+      game.mineOwners = {}
       game.players.forEach(player => {
         player.alive = true
       })
       await saveGame(groupId, game)
 
-      const total = getChipCount(game.players.length)
+      const total = game.totalChips || getChipCount(game.players.length)
       const text = [
         `布雷开始 ${game.players.length} 位玩家，每人选择 1 片，共 ${total} 片`,
         `本局识别号 ${game.gameCode}`,
         `私聊 Bot 发送\n#薯片埋雷 ${game.gameCode} 薯片编号`,
         "雷位和埋雷者不会在群里公布",
+        "游戏中发送 #退出薯片 可退出本局",
       ].join("\n")
       await this.replyWithBoard(e, game, text)
     })
@@ -347,7 +425,8 @@ export class Gi_chipSnack extends plugin {
       }
 
       const userId = getUserId(e)
-      if (!game.players.some(player => player.id === userId)) {
+      const player = game.players.find(player => player.id === userId)
+      if (!player) {
         await e.reply("你没有加入本群游戏，不能埋雷")
         return
       }
@@ -363,30 +442,42 @@ export class Gi_chipSnack extends plugin {
       }
       if (game.mines.includes(chipId)) {
         await deleteGame(groupId, game)
-        await e.reply("埋雷位置重复，本局已作废\n请回群重新开始游戏")
-        await this.sendToGroup(e, groupId, "埋雷位置重复，本局已作废\n请重新发送 #开薯片游戏")
+        await e.reply("发现重复雷位，本局已作废，请回群重新开始")
+        const notified = await this.sendToGroup(
+          e,
+          groupId,
+          "本局布雷出现重复雷位，游戏已作废，请重新发起",
+        )
+        if (!notified) await e.reply("暂时无法通知原群，请回群告知群友本局已作废")
         return
       }
 
       game.mines.push(chipId)
       game.mines.sort((left, right) => left - right)
+      game.mineOwners ||= {}
+      game.mineOwners[userId] = chipId
       game.submittedIds.push(userId)
       game.submittedIds.sort()
+      const progressMessage = `${player.name} 已埋好（${game.submittedIds.length}/${game.players.length}）`
 
       if (game.submittedIds.length < game.players.length) {
         await saveGame(groupId, game)
-        await e.reply(`雷位已记录 ${chipId} 号\n等待其他玩家完成布雷`)
+        await e.reply("雷位已收到，等待其他玩家完成布雷")
+        if (!(await this.sendToGroup(e, groupId, progressMessage))) {
+          await e.reply("暂时无法通知原群，请回群查看布雷进度")
+        }
         return
       }
 
       game.phase = "playing"
       delete game.submittedIds
+      delete game.mineOwners
       game.turnIndex = 0
       await saveGame(groupId, game)
-      await e.reply("雷位已记录")
+      await e.reply("埋雷成功，所有玩家已完成布雷，游戏开始")
       const firstPlayer = getCurrentPlayer(game)
       const message = [
-        "布雷完成，游戏开始\n现在轮到 ",
+        `${progressMessage}\n布雷完成，游戏开始\n现在轮到 `,
         segment.at(Number(firstPlayer.id), firstPlayer.name),
         "\n发送 #吃薯片 编号",
       ]
@@ -416,11 +507,10 @@ export class Gi_chipSnack extends plugin {
 
       const currentPlayer = getCurrentPlayer(game)
       if (!currentPlayer || currentPlayer.id !== getUserId(e)) {
-        await e.reply(`现在轮到 ${currentPlayer?.name || "下一位玩家"}，请稍等`)
         return
       }
 
-      const total = getChipCount(game.players.length)
+      const total = game.totalChips || getChipCount(game.players.length)
       if (chipId < 1 || chipId > total) {
         await e.reply(`薯片编号需在 1 到 ${total} 之间`)
         return
@@ -479,11 +569,13 @@ export class Gi_chipSnack extends plugin {
       return true
     }
 
-    const total = getChipCount(game.players.length)
+    const total = game.totalChips || getChipCount(game.players.length)
     if (game.phase === "lobby") {
       await e.reply(`薯片游戏报名中 ${game.players.length}/6 人\n至少 2 人后由发起人开始`)
     } else if (game.phase === "planting") {
-      await e.reply(`正在秘密布雷 ${game.submittedIds.length}/${game.players.length} 人已提交`)
+      await e.reply(
+        `正在秘密布雷 ${(game.submittedIds || []).length}/${game.players.length} 人已提交`,
+      )
     } else {
       const currentPlayer = getCurrentPlayer(game)
       const status = `薯片游戏进行中 ${game.players.filter(player => player.alive).length} 人存活，已吃 ${game.opened.length}/${total} 片`
@@ -493,6 +585,112 @@ export class Gi_chipSnack extends plugin {
           : status,
       )
     }
+    return true
+  }
+
+  async exitGame(e) {
+    if (!e.isGroup || !e.group_id) {
+      await e.reply("请在对应群聊退出薯片游戏")
+      return true
+    }
+
+    const groupId = String(e.group_id)
+    await withGroupLock(groupId, async () => {
+      const game = await loadGame(groupId)
+      if (!game) {
+        await e.reply("本群没有可退出的薯片游戏")
+        return
+      }
+
+      const userId = getUserId(e)
+      const playerIndex = game.players.findIndex(player => player.id === userId)
+      if (playerIndex < 0) {
+        await e.reply("你没有加入本局游戏")
+        return
+      }
+
+      const wasHost = game.hostId === userId
+      const wasCurrentPlayer = game.phase === "playing" && getCurrentPlayer(game)?.id === userId
+      const leavingPlayer = game.players.splice(playerIndex, 1)[0]
+
+      if (game.phase === "planting") {
+        const hadSubmitted = (game.submittedIds || []).includes(userId)
+        game.submittedIds = (game.submittedIds || []).filter(id => id !== userId)
+        const mineId = game.mineOwners?.[userId]
+        if (mineId !== undefined) {
+          game.mines = game.mines.filter(id => id !== mineId)
+        } else if (hadSubmitted) {
+          game.mines = []
+          game.submittedIds = []
+          game.mineOwners = {}
+        }
+        if (game.mineOwners) delete game.mineOwners[userId]
+      }
+
+      if (game.players.length === 0) {
+        await deleteGame(groupId, game)
+        await e.reply(`${leavingPlayer.name} 已退出，本局无人参加，游戏已取消`)
+        return
+      }
+
+      const newHost = wasHost ? promoteRandomPlayer(game) : null
+      const message = [`${leavingPlayer.name} 已退出本局`]
+      if (newHost) message.push(`\n发起人已移交给 ${newHost.name}`)
+
+      if (game.phase === "planting" && game.players.length < 2) {
+        game.phase = "lobby"
+        game.mines = []
+        game.submittedIds = []
+        game.mineOwners = {}
+        delete game.totalChips
+        await saveGame(groupId, game)
+        message.push("\n当前不足 2 人，游戏已回到报名阶段")
+        await e.reply(message)
+        return
+      }
+
+      if (game.phase === "playing") {
+        const survivors = game.players.filter(player => player.alive)
+        if (survivors.length <= 1) {
+          game.phase = "finished"
+          const result = survivors.length
+            ? `最后一名存活者 ${survivors[0].name} 获胜`
+            : "所有存活玩家都已退出，本局无人获胜"
+          message.push(`\n${result}\n本局雷位 ${game.mines.join("、")}`)
+          await this.replyWithBoard(e, game, message, true)
+          await deleteGame(groupId, game)
+          return
+        }
+
+        if (wasCurrentPlayer) {
+          game.turnIndex = findNextAliveIndex(game, playerIndex - 1)
+        } else if (playerIndex < game.turnIndex) {
+          game.turnIndex--
+        }
+        if (game.turnIndex >= game.players.length) game.turnIndex = 0
+      }
+
+      const plantingComplete =
+        game.phase === "planting" && game.submittedIds.length === game.players.length
+      if (plantingComplete) {
+        game.phase = "playing"
+        delete game.submittedIds
+        delete game.mineOwners
+        game.turnIndex = 0
+      }
+
+      await saveGame(groupId, game)
+      if (game.phase === "planting") {
+        message.push(`\n秘密布雷进度 ${game.submittedIds.length}/${game.players.length}`)
+      } else if (game.phase === "playing") {
+        const currentPlayer = getCurrentPlayer(game)
+        if (plantingComplete) message.push("\n布雷完成，游戏开始")
+        message.push("\n现在轮到 ", segment.at(Number(currentPlayer.id), currentPlayer.name))
+      } else {
+        message.push(`\n报名中 ${game.players.length}/6 人`)
+      }
+      await e.reply(message)
+    })
     return true
   }
 
@@ -509,8 +707,8 @@ export class Gi_chipSnack extends plugin {
         await e.reply("本群没有薯片游戏")
         return
       }
-      if (game.hostId !== getUserId(e) && !e.isMaster) {
-        await e.reply("只有发起人或 Bot 管理员可以结束本局")
+      if (game.hostId !== getUserId(e) && !e.isMaster && !isGroupManager(e)) {
+        await e.reply("只有发起人、群主、群管理员或 Bot 管理员可以结束本局")
         return
       }
       await deleteGame(groupId, game)

@@ -15,6 +15,9 @@
       title: '加入薯片 / 开始薯片'
       desc: '群内报名；至少2人后由发起人开始布雷'
     - icon: paimon
+      title: '退出薯片'
+      desc: '报名或游戏中退出本局；发起人退出时随机移交发起人'
+    - icon: paimon
       title: '薯片埋雷 局号 编号'
       desc: '每位玩家私聊Bot选择1片埋雷，雷位不会公开'
     - icon: paimon
@@ -22,7 +25,7 @@
       desc: '游戏开始后按顺序选择薯片，踩雷会被淘汰'
     - icon: paimon
       title: '薯片状态 / 结束薯片游戏'
-      desc: '查看本群游戏进度；发起人可结束当前游戏'
+      desc: '查看本群游戏进度；发起人、群主、群管理员或Bot管理员可结束游戏'
 - group: 钓鱼
   list:
     - icon: paimon
