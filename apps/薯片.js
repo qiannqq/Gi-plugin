@@ -77,7 +77,7 @@ function getUserName(e) {
 }
 
 function getChipCount(playerCount) {
-  return playerCount * 5
+  return playerCount * 12
 }
 
 function getColumns(playerCount) {
