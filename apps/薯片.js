@@ -3,6 +3,11 @@ import { image } from "../model/index.js"
 
 const REDIS_PREFIX = "GiPlugin:ChipSnack:"
 const GAME_TTL_SECONDS = 6 * 60 * 60
+const DEFAULT_MAX_PLAYERS = 6
+const MAX_PLAYERS = 10
+const DEFAULT_CHIPS_PER_PLAYER = 12
+const MIN_CHIPS_PER_PLAYER = 2
+const MAX_CHIPS_PER_PLAYER = 20
 const GROUP_LOCK_TTL_MS = 60 * 1000
 const GROUP_LOCK_RENEW_MS = 20 * 1000
 const GROUP_LOCK_WAIT_MS = 15 * 1000
@@ -92,6 +97,18 @@ function gameCodeKey(gameCode) {
   return `${REDIS_PREFIX}code:${gameCode}`
 }
 
+function groupChipCountKey(groupId) {
+  return `${REDIS_PREFIX}settings:${groupId}:chipsPerPlayer`
+}
+
+async function loadChipsPerPlayer(groupId) {
+  const value = Number(await redis.get(groupChipCountKey(groupId)))
+  if (Number.isInteger(value) && value >= MIN_CHIPS_PER_PLAYER && value <= MAX_CHIPS_PER_PLAYER) {
+    return value
+  }
+  return DEFAULT_CHIPS_PER_PLAYER
+}
+
 async function loadGame(groupId) {
   const value = await redis.get(gameKey(groupId))
   if (!value) return null
@@ -140,8 +157,8 @@ function getUserName(e) {
   return e.sender?.card || e.sender?.nickname || e.nickname || getUserId(e)
 }
 
-function getChipCount(playerCount) {
-  return playerCount * 12
+function getChipCount(playerCount, chipsPerPlayer = DEFAULT_CHIPS_PER_PLAYER) {
+  return playerCount * chipsPerPlayer
 }
 
 function promoteRandomPlayer(game) {
@@ -155,7 +172,7 @@ function isGroupManager(e) {
 }
 
 function getColumns(playerCount) {
-  return Math.min(6, Math.max(4, playerCount))
+  return Math.min(MAX_PLAYERS, Math.max(4, playerCount))
 }
 
 function getCurrentPlayer(game) {
@@ -173,7 +190,9 @@ function findNextAliveIndex(game, currentIndex) {
 function makeBoardData(game, revealAll = false) {
   const mineSet = new Set(game.mines)
   const openedSet = new Set(game.opened)
-  const total = game.totalChips || getChipCount(game.players.length)
+  const total =
+    game.totalChips ||
+    getChipCount(game.players.length, game.chipsPerPlayer || DEFAULT_CHIPS_PER_PLAYER)
   const currentPlayer = game.phase === "playing" ? getCurrentPlayer(game) : null
   const phaseText =
     {
@@ -222,10 +241,11 @@ export class Gi_chipSnack extends plugin {
       event: "message",
       priority: 500,
       rule: [
-        { reg: "^(#|/)?开薯片游戏$", fnc: "createGame" },
+        { reg: "^(#|/)?开薯片游戏(?:\\s+\\d+)?$", fnc: "createGame" },
         { reg: "^(#|/)?加入薯片$", fnc: "joinGame" },
         { reg: "^(#|/)?退出薯片$", fnc: "exitGame" },
         { reg: "^(#|/)?开始薯片$", fnc: "beginPlanting" },
+        { reg: "^(#|/)?设置薯片数量\\s+\\d+$", fnc: "setChipsPerPlayer" },
         { reg: "^(#|/)?薯片埋雷\\s+\\d+\\s+\\d+$", fnc: "plantMine" },
         { reg: "^(#|/)?吃薯片\\s*\\d+$", fnc: "eatChip" },
         { reg: "^(#|/)?薯片状态$", fnc: "showStatus" },
@@ -284,6 +304,13 @@ export class Gi_chipSnack extends plugin {
       return true
     }
 
+    const match = String(e.msg || e.raw_message || "").match(/^(#|\/)?开薯片游戏(?:\s+(\d+))?$/)
+    const maxPlayers = match?.[2] ? Number(match[2]) : DEFAULT_MAX_PLAYERS
+    if (!Number.isInteger(maxPlayers) || maxPlayers < 2 || maxPlayers > MAX_PLAYERS) {
+      await e.reply(`本局人数上限需设置为 2 到 ${MAX_PLAYERS} 人`)
+      return true
+    }
+
     const groupId = String(e.group_id)
     await withGroupLock(groupId, async () => {
       const existing = await loadGame(groupId)
@@ -302,6 +329,7 @@ export class Gi_chipSnack extends plugin {
       const game = {
         gameCode,
         phase: "lobby",
+        maxPlayers,
         hostId: userId,
         players: [{ id: userId, name: getUserName(e), alive: true }],
         mines: [],
@@ -312,7 +340,7 @@ export class Gi_chipSnack extends plugin {
       }
       await saveGame(groupId, game)
       await e.reply(
-        `薯片游戏已创建\n本局识别号 ${gameCode}\n发送 #加入薯片 报名，2~6 人加入后由发起人发送 #开始薯片\n发送 #退出薯片 可退出本局`,
+        `薯片游戏已创建（${maxPlayers} 人上限）\n本局识别号 ${gameCode}\n发送 #加入薯片 报名，满员后自动开局；发起人也可发送 #开始薯片 提前开局（开局后进入布雷阶段）\n发送 #退出薯片 可退出本局`,
       )
     })
     return true
@@ -337,15 +365,62 @@ export class Gi_chipSnack extends plugin {
         await e.reply("你已经加入这局游戏")
         return
       }
-      if (game.players.length >= 6) {
-        await e.reply("本局最多 6 人，报名已满")
+      const maxPlayers = game.maxPlayers || DEFAULT_MAX_PLAYERS
+      if (game.players.length >= maxPlayers) {
+        await e.reply(`本局最多 ${maxPlayers} 人，报名已满`)
         return
       }
 
-      game.players.push({ id: userId, name: getUserName(e), alive: true })
+      const player = { id: userId, name: getUserName(e), alive: true }
+      game.players.push(player)
+      if (game.players.length >= maxPlayers) {
+        await this.beginPlantingLocked(
+          e,
+          groupId,
+          game,
+          `报名已满 ${game.players.length}/${maxPlayers} 人，自动开始布雷`,
+        )
+        return
+      }
+
       await saveGame(groupId, game)
-      await e.reply(`${getUserName(e)} 加入成功 ${game.players.length}/6`)
+      await e.reply(`${player.name} 加入成功 ${game.players.length}/${maxPlayers}`)
     })
+    return true
+  }
+
+  async beginPlantingLocked(e, groupId, game, announcement) {
+    if (!game.gameCode) {
+      game.gameCode = await reserveGameCode(groupId)
+      if (!game.gameCode) {
+        await e.reply("暂时无法生成本局识别号，请稍后重试")
+        return false
+      }
+    }
+
+    const chipsPerPlayer = await loadChipsPerPlayer(groupId)
+    game.phase = "planting"
+    game.maxPlayers ||= DEFAULT_MAX_PLAYERS
+    game.chipsPerPlayer = chipsPerPlayer
+    game.totalChips = getChipCount(game.players.length, chipsPerPlayer)
+    game.submittedIds = []
+    game.mines = []
+    game.mineOwners = {}
+    game.opened = []
+    game.players.forEach(player => {
+      player.alive = true
+    })
+    await saveGame(groupId, game)
+
+    const text = [
+      announcement,
+      `布雷开始 ${game.players.length} 位玩家，每人选择 1 片，共 ${game.totalChips} 片（每人 ${chipsPerPlayer} 片）`,
+      `本局识别号 ${game.gameCode}`,
+      `私聊 Bot 发送\n#薯片埋雷 ${game.gameCode} 薯片编号`,
+      "雷位和埋雷者不会在群里公布",
+      "游戏中发送 #退出薯片 可退出本局",
+    ].filter(Boolean)
+    await this.replyWithBoard(e, game, text)
     return true
   }
 
@@ -371,32 +446,32 @@ export class Gi_chipSnack extends plugin {
         return
       }
 
-      game.phase = "planting"
-      game.totalChips = getChipCount(game.players.length)
-      if (!game.gameCode) {
-        game.gameCode = await reserveGameCode(groupId)
-        if (!game.gameCode) {
-          await e.reply("暂时无法生成本局识别号，请稍后重试")
-          return
-        }
-      }
-      game.submittedIds = []
-      game.mines = []
-      game.mineOwners = {}
-      game.players.forEach(player => {
-        player.alive = true
-      })
-      await saveGame(groupId, game)
+      await this.beginPlantingLocked(e, groupId, game, "发起人已提前开局，接下来开始布雷")
+    })
+    return true
+  }
 
-      const total = game.totalChips || getChipCount(game.players.length)
-      const text = [
-        `布雷开始 ${game.players.length} 位玩家，每人选择 1 片，共 ${total} 片`,
-        `本局识别号 ${game.gameCode}`,
-        `私聊 Bot 发送\n#薯片埋雷 ${game.gameCode} 薯片编号`,
-        "雷位和埋雷者不会在群里公布",
-        "游戏中发送 #退出薯片 可退出本局",
-      ].join("\n")
-      await this.replyWithBoard(e, game, text)
+  async setChipsPerPlayer(e) {
+    if (!e.isGroup || !e.group_id) {
+      await e.reply("请在群聊中设置每人薯片数量")
+      return true
+    }
+
+    const match = String(e.msg || e.raw_message || "").match(/^(#|\/)?设置薯片数量\s+(\d+)$/)
+    const chipsPerPlayer = Number(match?.[2])
+    if (
+      !Number.isInteger(chipsPerPlayer) ||
+      chipsPerPlayer < MIN_CHIPS_PER_PLAYER ||
+      chipsPerPlayer > MAX_CHIPS_PER_PLAYER
+    ) {
+      await e.reply(`每人薯片数量需设置为 ${MIN_CHIPS_PER_PLAYER} 到 ${MAX_CHIPS_PER_PLAYER}`)
+      return true
+    }
+
+    const groupId = String(e.group_id)
+    await withGroupLock(groupId, async () => {
+      await redis.set(groupChipCountKey(groupId), String(chipsPerPlayer))
+      await e.reply(`本群每人薯片数量已设为 ${chipsPerPlayer}，下次开始布雷时生效`)
     })
     return true
   }
@@ -435,7 +510,9 @@ export class Gi_chipSnack extends plugin {
         return
       }
 
-      const total = getChipCount(game.players.length)
+      const total =
+        game.totalChips ||
+        getChipCount(game.players.length, game.chipsPerPlayer || DEFAULT_CHIPS_PER_PLAYER)
       if (chipId < 1 || chipId > total) {
         await e.reply(`薯片编号需在 1 到 ${total} 之间，请重新选择`)
         return
@@ -510,7 +587,9 @@ export class Gi_chipSnack extends plugin {
         return
       }
 
-      const total = game.totalChips || getChipCount(game.players.length)
+      const total =
+        game.totalChips ||
+        getChipCount(game.players.length, game.chipsPerPlayer || DEFAULT_CHIPS_PER_PLAYER)
       if (chipId < 1 || chipId > total) {
         await e.reply(`薯片编号需在 1 到 ${total} 之间`)
         return
@@ -569,9 +648,14 @@ export class Gi_chipSnack extends plugin {
       return true
     }
 
-    const total = game.totalChips || getChipCount(game.players.length)
+    const total =
+      game.totalChips ||
+      getChipCount(game.players.length, game.chipsPerPlayer || DEFAULT_CHIPS_PER_PLAYER)
     if (game.phase === "lobby") {
-      await e.reply(`薯片游戏报名中 ${game.players.length}/6 人\n至少 2 人后由发起人开始`)
+      const maxPlayers = game.maxPlayers || DEFAULT_MAX_PLAYERS
+      await e.reply(
+        `薯片游戏报名中 ${game.players.length}/${maxPlayers} 人\n满员后自动开局；发起人可提前开局`,
+      )
     } else if (game.phase === "planting") {
       await e.reply(
         `正在秘密布雷 ${(game.submittedIds || []).length}/${game.players.length} 人已提交`,
@@ -687,7 +771,7 @@ export class Gi_chipSnack extends plugin {
         if (plantingComplete) message.push("\n布雷完成，游戏开始")
         message.push("\n现在轮到 ", segment.at(Number(currentPlayer.id), currentPlayer.name))
       } else {
-        message.push(`\n报名中 ${game.players.length}/6 人`)
+        message.push(`\n报名中 ${game.players.length}/${game.maxPlayers || DEFAULT_MAX_PLAYERS} 人`)
       }
       await e.reply(message)
     })
