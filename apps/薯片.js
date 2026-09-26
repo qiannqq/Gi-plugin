@@ -224,6 +224,54 @@ function makePlayerListQuote(e, players, label) {
   return [markdownText(`\n\n> **${label}：** `), ...mentions]
 }
 
+function makeDeathSummary(e, game) {
+  const compatible = isQBotCompatible(e)
+  const deaths = game.deaths || []
+  const details = deaths.length
+    ? deaths.flatMap(death => {
+        const revealOwner = game.revealMineOwners && Boolean(death.mineOwnerId)
+        const ownMine = revealOwner && death.playerId === death.mineOwnerId
+        const ownerName = death.mineOwnerName || "未知玩家"
+        const description = [
+          ` 吃了 ${death.chipId} 号薯片，爆了`,
+          revealOwner ? `（埋雷者：${ownMine ? "自己" : ownerName}）` : "",
+        ].join("")
+        if (!compatible) return [`\n${death.playerName}${description}`]
+
+        const player = { id: death.playerId, name: death.playerName }
+        const owner = revealOwner ? { id: death.mineOwnerId, name: ownerName } : null
+        const ownerDetails = revealOwner
+          ? [
+              markdownText("（埋雷者："),
+              ownMine ? markdownText("自己") : playerMention(e, owner),
+              markdownText("）"),
+            ]
+          : []
+        return [
+          markdownText("\n> "),
+          playerMention(e, player),
+          markdownText(` 吃了 ${death.chipId} 号薯片，爆了`),
+          ...ownerDetails,
+        ]
+      })
+    : compatible
+      ? [markdownText("\n> 本局无人因踩雷出局")]
+      : ["无人因踩雷出局"]
+
+  return [
+    compatible ? markdownText("\n\n**出局记录：**") : "\n出局记录：",
+    ...details,
+  ]
+}
+
+function makeMineOwnerSection(e, game, mineOwnerDetails) {
+  if (!game.revealMineOwners || !mineOwnerDetails.length) return []
+  return [
+    isQBotCompatible(e) ? markdownText("\n\n**埋雷记录：**") : "\n\n埋雷记录：",
+    ...mineOwnerDetails,
+  ]
+}
+
 function makeMineOwnerDetails(e, game, onlyChipId, excludedChipId) {
   if (!game.revealMineOwners) return []
 
@@ -1019,7 +1067,24 @@ export class Gi_chipSnack extends plugin {
         hitMine && Number(game.mineOwners?.[currentPlayer.id]) === chipId
       const resultText = hitMine ? "💥 好吃到爆！" : "✅ 安全"
       game.opened.push(chipId)
-      if (hitMine) currentPlayer.alive = false
+      if (hitMine) {
+        currentPlayer.alive = false
+        game.deaths ||= []
+        const mineOwner = Object.entries(game.mineOwners || {}).find(
+          ([, plantedChipId]) => Number(plantedChipId) === chipId,
+        )
+        game.deaths.push({
+          playerId: currentPlayer.id,
+          playerName: currentPlayer.name,
+          chipId,
+          mineOwnerId: mineOwner?.[0] || null,
+          mineOwnerName:
+            (mineOwner &&
+              (game.mineOwnerNames?.[mineOwner[0]] ||
+                game.players.find(player => player.id === mineOwner[0])?.name)) ||
+            "未知玩家",
+        })
+      }
 
       const allDead = game.players.every(player => !player.alive)
       const survivors = game.players.filter(player => player.alive)
@@ -1077,16 +1142,16 @@ export class Gi_chipSnack extends plugin {
                 survivors,
                 "获胜玩家",
               ),
-              ...mineOwnerDetails,
+              ...makeDeathSummary(e, game),
+              ...makeMineOwnerSection(e, game, mineOwnerDetails),
               ...mineListDetails,
             ]
-          : mineOwnerDetails.length
-            ? [
-                `${currentPlayer.name} 选择 ${chipId} 号薯片\n${resultText}${ownMineMessage || ""}\n${result}`,
-                ...mineOwnerDetails,
-                ...mineListDetails,
-              ]
-            : `${currentPlayer.name} 选择 ${chipId} 号薯片\n${resultText}${ownMineMessage || ""}\n${result}${game.revealMineOwners ? "" : `\n本局雷位 ${mineList}`}`
+          : [
+              `${currentPlayer.name} 选择 ${chipId} 号薯片\n${resultText}${ownMineMessage || ""}\n${result}`,
+              ...makeDeathSummary(e, game),
+              ...makeMineOwnerSection(e, game, mineOwnerDetails),
+              ...mineListDetails,
+            ]
         await this.replyWithBoard(
           e,
           game,
@@ -1279,14 +1344,16 @@ export class Gi_chipSnack extends plugin {
             message.push(
               markdownText(`\n${result}`),
               ...makePlayerListQuote(e, survivors, "获胜玩家"),
-              ...mineOwnerDetails,
+              ...makeDeathSummary(e, game),
+              ...makeMineOwnerSection(e, game, mineOwnerDetails),
               ...mineListDetails,
             )
           } else {
             message.push(
               "\n",
               result,
-              ...mineOwnerDetails,
+              ...makeDeathSummary(e, game),
+              ...makeMineOwnerSection(e, game, mineOwnerDetails),
               ...(game.revealMineOwners ? [] : [`\n本局雷位 ${game.mines.join("、")}`]),
             )
           }
