@@ -11,6 +11,7 @@ const MIN_CHIPS_PER_PLAYER = 2
 const MAX_CHIPS_PER_PLAYER = 20
 const BUTTONS_PER_KEYBOARD = 25
 const MAX_PASSIVE_REPLIES = 5
+const PROGRESS_RECALL_SECONDS = 60
 const GROUP_LOCK_TTL_MS = 60 * 1000
 const GROUP_LOCK_RENEW_MS = 20 * 1000
 const GROUP_LOCK_WAIT_MS = 15 * 1000
@@ -104,12 +105,20 @@ function groupChipCountKey(groupId) {
   return `${REDIS_PREFIX}settings:${groupId}:chipsPerPlayer`
 }
 
+function groupRevealMineOwnersKey(groupId) {
+  return `${REDIS_PREFIX}settings:${groupId}:revealMineOwners`
+}
+
 async function loadChipsPerPlayer(groupId) {
   const value = Number(await redis.get(groupChipCountKey(groupId)))
   if (Number.isInteger(value) && value >= MIN_CHIPS_PER_PLAYER && value <= MAX_CHIPS_PER_PLAYER) {
     return value
   }
   return DEFAULT_CHIPS_PER_PLAYER
+}
+
+async function loadRevealMineOwners(groupId) {
+  return (await redis.get(groupRevealMineOwnersKey(groupId))) === "1"
 }
 
 async function loadGame(groupId) {
@@ -123,8 +132,11 @@ async function loadGame(groupId) {
 }
 
 async function saveGame(groupId, game) {
-  await redis.set(gameKey(groupId), JSON.stringify(game))
-  await redis.expire(gameKey(groupId), GAME_TTL_SECONDS)
+  await redis.set(
+    gameKey(groupId),
+    JSON.stringify(game),
+    { EX: GAME_TTL_SECONDS },
+  )
   if (game.gameCode) {
     await redis.expire(gameCodeKey(game.gameCode), GAME_TTL_SECONDS)
   }
@@ -188,6 +200,63 @@ function isQBotCompatible(e) {
       /[a-z]/i.test(String(e.self_id || "")) ||
       adapterNames.some(adapter => typeof adapter === "string" && /qbot/i.test(adapter)),
   )
+}
+
+function markdownText(content) {
+  return { type: "markdown", content }
+}
+
+function markdownParts(message) {
+  return message.map(part => (typeof part === "string" ? markdownText(part) : part))
+}
+
+function makeCurrentPlayerQuote(e, player, instruction) {
+  const message = [markdownText("\n\n> **当前玩家：** "), playerMention(e, player)]
+  if (instruction) message.push(markdownText(`\n> ${instruction}`))
+  return message
+}
+
+function makePlayerListQuote(e, players, label) {
+  if (!players.length) return []
+  const mentions = players.flatMap((player, index) =>
+    index ? [markdownText("、"), playerMention(e, player)] : [playerMention(e, player)],
+  )
+  return [markdownText(`\n\n> **${label}：** `), ...mentions]
+}
+
+function makeMineOwnerDetails(e, game, onlyChipId, excludedChipId) {
+  if (!game.revealMineOwners) return []
+
+  const entries = Object.entries(game.mineOwners || {})
+    .map(([ownerId, chipId]) => ({
+      chipId: Number(chipId),
+      owner: {
+        id: ownerId,
+        name:
+          game.mineOwnerNames?.[ownerId] ||
+          game.players.find(player => player.id === ownerId)?.name ||
+          ownerId,
+      },
+    }))
+    .filter(
+      entry =>
+        Number.isInteger(entry.chipId) &&
+        (onlyChipId === undefined || entry.chipId === onlyChipId) &&
+        (excludedChipId === undefined || entry.chipId !== excludedChipId),
+    )
+    .sort((left, right) => left.chipId - right.chipId)
+  if (!entries.length) return []
+
+  const compatible = isQBotCompatible(e)
+  return [
+    ...entries.flatMap(({ chipId, owner }) => [
+      compatible ? markdownText("\n> ") : "\n",
+      playerMention(e, owner),
+      compatible
+        ? markdownText(` 埋下了 ${chipId} 号薯片`)
+        : ` 埋下了 ${chipId} 号薯片`,
+    ]),
+  ]
 }
 
 function getChipCount(playerCount, chipsPerPlayer = DEFAULT_CHIPS_PER_PLAYER) {
@@ -283,6 +352,7 @@ export class Gi_chipSnack extends plugin {
         { reg: "^(#|/)?退出薯片$", fnc: "exitGame" },
         { reg: "^(#|/)?开始薯片$", fnc: "beginPlanting" },
         { reg: "^(#|/)?设置薯片数量\\s+\\d+$", fnc: "setChipsPerPlayer" },
+        { reg: "^(#|/)?设置薯片公开埋雷者\\s+(开|关)$", fnc: "setMineOwnerReveal" },
         { reg: "^(#|/)?薯片埋雷\\s+\\d+\\s+\\d+$", fnc: "plantMine" },
         { reg: "gi-chip-mine:\\d{3}:\\d+", fnc: "plantMine" },
         { reg: "gi-chip-eat:\\d{3}:\\d+", fnc: "eatChip" },
@@ -307,20 +377,21 @@ export class Gi_chipSnack extends plugin {
   async replyWithBoard(e, game, text, revealAll = false, replyExtra) {
     const message = Array.isArray(text) ? text : [text]
     if (isQBotCompatible(e)) {
+      const markdownMessage = markdownParts(message)
       const { keyboards, ...extra } = replyExtra || {}
       if (Array.isArray(keyboards)) {
         if (keyboards.length) {
           for (const keyboard of keyboards) {
             const content = keyboard
-              ? message
-              : [...message, "\n该编号段已没有可选薯片"]
+              ? markdownMessage
+              : [...markdownMessage, markdownText("\n该编号段已没有可选薯片")]
             await e.reply(content, false, keyboard ? { ...extra, keyboard } : extra)
           }
         } else {
-          await e.reply(message, false, extra)
+          await e.reply(markdownMessage, false, extra)
         }
       } else {
-        await e.reply(message, false, replyExtra)
+        await e.reply(markdownMessage, false, replyExtra)
       }
       return
     }
@@ -342,7 +413,10 @@ export class Gi_chipSnack extends plugin {
       await this.replyWithBoard(
         e,
         game,
-        [...resultMessage, "\n", "点击下方按钮选择薯片"],
+        [
+          ...resultMessage,
+          ...makeCurrentPlayerQuote(e, getCurrentPlayer(game), "点击下方按钮选择薯片"),
+        ],
         false,
         { keyboards: this.makeGameKeyboards(game, "playing") },
       )
@@ -361,12 +435,27 @@ export class Gi_chipSnack extends plugin {
     await e.reply(img ? [instruction, img] : `${instruction}\n棋盘图片生成失败，请根据编号继续游戏`)
   }
 
-  async sendToGroup(e, groupId, message) {
+  async sendToGroup(e, groupId, message, recallAfterSeconds = 0) {
     const bots = globalThis.Bot
     const bot = bots?.[e.self_id] || bots?.[e.bot?.uin] || bots?.[bots?.uin]
     const group = bot?.pickGroup?.(String(groupId))
     if (!group) return false
-    await group.sendMsg(message)
+    const result = await group.sendMsg(message)
+    const messageIds = result?.message_id
+    if (
+      recallAfterSeconds > 0 &&
+      messageIds &&
+      typeof group.recallMsg === "function"
+    ) {
+      const timer = setTimeout(async () => {
+        try {
+          await group.recallMsg(messageIds)
+        } catch (error) {
+          globalThis.logger?.warn?.("[薯片] 撤回布雷进度消息失败", error)
+        }
+      }, recallAfterSeconds * 1000)
+      timer.unref?.()
+    }
     return true
   }
 
@@ -378,9 +467,64 @@ export class Gi_chipSnack extends plugin {
     )
   }
 
+  makeCommandButton(id, label, command, permission = { type: 2 }) {
+    return {
+      id,
+      render_data: { label, visited_label: "已发送", style: 1 },
+      action: {
+        type: 2,
+        permission,
+        data: command,
+        enter: true,
+      },
+    }
+  }
+
+  makeLobbyKeyboard(game) {
+    const startPermission = game.hostId
+      ? { type: 0, specify_user_ids: [String(game.hostId)] }
+      : { type: 2 }
+    return {
+      content: {
+        rows: [
+          {
+            buttons: [
+              this.makeCommandButton(`lobby-${game.gameCode}-join`, "加入游戏", "#加入薯片"),
+              this.makeCommandButton(
+                `lobby-${game.gameCode}-start`,
+                "开始游戏",
+                "#开始薯片",
+                startPermission,
+              ),
+              this.makeCommandButton(`lobby-${game.gameCode}-exit`, "退出游戏", "#退出薯片"),
+            ],
+          },
+        ],
+      },
+    }
+  }
+
+  makeRestartKeyboard(game) {
+    const maxPlayers = game.maxPlayers || DEFAULT_MAX_PLAYERS
+    return {
+      content: {
+        rows: [
+          {
+            buttons: [
+              this.makeCommandButton(
+                `restart-${game.gameCode}`,
+                "再来一把",
+                `#开薯片游戏 ${maxPlayers}`,
+              ),
+            ],
+          },
+        ],
+      },
+    }
+  }
+
   makeGameKeyboards(game, phase) {
-    const chipCount = game.totalChips || getChipCount(game.players.length, game.chipsPerPlayer)
-    const selectableChipIds = new Set(this.getSelectableChipIds(game, phase))
+    const selectableChipIds = this.getSelectableChipIds(game, phase)
     const playerIds =
       phase === "planting"
         ? game.players
@@ -398,31 +542,28 @@ export class Gi_chipSnack extends plugin {
       },
     })
     const keyboards = []
-    for (let start = 1; start <= chipCount; start += BUTTONS_PER_KEYBOARD) {
-      const chips = Array.from(
-        { length: Math.min(BUTTONS_PER_KEYBOARD, chipCount - start + 1) },
-        (_, index) => start + index,
-      )
-        .filter(chipId => selectableChipIds.has(chipId))
+    for (let offset = 0; offset < selectableChipIds.length; offset += BUTTONS_PER_KEYBOARD) {
+      const chips = selectableChipIds
+        .slice(offset, offset + BUTTONS_PER_KEYBOARD)
         .map(chipId =>
-        makeButton(
-          `${phase}-${game.gameCode}-${chipId}`,
-          String(chipId),
-          `gi-chip-${phase === "planting" ? "mine" : "eat"}:${game.gameCode}:${chipId}`,
-          phase === "planting"
-            ? {
-                content: `确认埋下 ${chipId} 号薯片？`,
-                confirm_text: "埋雷",
-                cancel_text: "取消",
-              }
-            : undefined,
-        ),
-      )
+          makeButton(
+            `${phase}-${game.gameCode}-${chipId}`,
+            String(chipId),
+            `gi-chip-${phase === "planting" ? "mine" : "eat"}:${game.gameCode}:${chipId}`,
+            phase === "planting"
+              ? {
+                  content: `确认埋下 ${chipId} 号薯片？`,
+                  confirm_text: "埋雷",
+                  cancel_text: "取消",
+                }
+              : undefined,
+          ),
+        )
       const rows = []
       for (let index = 0; index < chips.length; index += 5) {
         rows.push({ buttons: chips.slice(index, index + 5) })
       }
-      keyboards.push(rows.length ? { content: { rows } } : null)
+      keyboards.push({ content: { rows } })
     }
     return keyboards
   }
@@ -473,9 +614,16 @@ export class Gi_chipSnack extends plugin {
       }
       await saveGame(groupId, game)
       const gameCodeText = isQBotCompatible(e) ? "" : `\n本局识别号 ${gameCode}`
-      await e.reply(
-        `薯片游戏已创建（${maxPlayers} 人上限）${gameCodeText}\n发送 #加入薯片 报名，满员后自动开局；发起人也可发送 #开始薯片 提前开局（开局后进入布雷阶段）\n发送 #退出薯片 可退出本局`,
-      )
+      const message = isQBotCompatible(e)
+        ? markdownText(
+            `## 薯片游戏已创建\n\n**人数上限：** ${maxPlayers} 人\n\n点击「加入游戏」按钮或发送 \`#加入薯片\` 报名；满员后自动进入布雷阶段，发起人也可发送 \`#开始薯片\` 提前开始布雷\n\n点击「退出游戏」按钮或发送 \`#退出薯片\` 可退出本局`,
+          )
+        : `薯片游戏已创建（${maxPlayers} 人上限）${gameCodeText}\n发送 #加入薯片 报名，满员后自动进入布雷阶段；发起人也可发送 #开始薯片 提前开始布雷\n发送 #退出薯片 可退出本局`
+      if (isQBotCompatible(e)) {
+        await e.reply(message, false, { keyboard: this.makeLobbyKeyboard(game) })
+      } else {
+        await e.reply(message)
+      }
     })
     return true
   }
@@ -507,7 +655,14 @@ export class Gi_chipSnack extends plugin {
 
       const player = { id: userId, name: getUserName(e), alive: true }
       game.players.push(player)
+      const compatible = isQBotCompatible(e)
       if (game.players.length >= maxPlayers) {
+        if (compatible) {
+          await e.reply([
+            playerMention(e, player),
+            markdownText(` **加入成功**（${game.players.length}/${maxPlayers}）`),
+          ])
+        }
         await this.beginPlantingLocked(
           e,
           groupId,
@@ -518,11 +673,18 @@ export class Gi_chipSnack extends plugin {
       }
 
       await saveGame(groupId, game)
-      await e.reply(
-        isQBotCompatible(e)
-          ? [playerMention(e, player), ` 加入成功 ${game.players.length}/${maxPlayers}`]
-          : `${player.name} 加入成功 ${game.players.length}/${maxPlayers}`,
-      )
+      if (compatible) {
+        await e.reply(
+          [
+            playerMention(e, player),
+            markdownText(` **加入成功**（${game.players.length}/${maxPlayers}）`),
+          ],
+          false,
+          { keyboard: this.makeLobbyKeyboard(game) },
+        )
+      } else {
+        await e.reply(`${player.name} 加入成功 ${game.players.length}/${maxPlayers}`)
+      }
     })
     return true
   }
@@ -556,23 +718,41 @@ export class Gi_chipSnack extends plugin {
     game.maxPlayers ||= DEFAULT_MAX_PLAYERS
     game.chipsPerPlayer = chipsPerPlayer
     game.totalChips = totalChips
+    game.revealMineOwners = await loadRevealMineOwners(groupId)
     game.submittedIds = []
     game.mines = []
     game.mineOwners = {}
+    game.mineOwnerNames = {}
     game.opened = []
     game.players.forEach(player => {
       player.alive = true
     })
     await saveGame(groupId, game)
 
-    const text = [
-      announcement,
-      `布雷开始 ${game.players.length} 位玩家，每人选择 1 片，共 ${game.totalChips} 片（每人 ${chipsPerPlayer} 片）`,
-      compatible ? null : `本局识别号 ${game.gameCode}`,
-      compatible ? "点击下方按钮秘密选择一片埋雷" : `私聊 Bot 发送\n#薯片埋雷 ${game.gameCode} 薯片编号`,
-      "雷位和埋雷者不会在群里公布",
-      "游戏中发送 #退出薯片 可退出本局",
-    ].filter(Boolean)
+    const text = compatible
+      ? [
+          markdownText(
+            [
+              `## ${announcement}`,
+              `**布雷开始** · ${game.players.length} 位玩家 · 共 ${game.totalChips} 片（每人 ${chipsPerPlayer} 片）`,
+              "点击下方按钮，秘密选择一片埋雷",
+              game.revealMineOwners
+                ? "**埋雷者公开：** 结算时会公布每位埋雷者对应的薯片编号"
+                : "**保密提示：** 结算只公布雷位，不公布埋雷者",
+              "发送 `#退出薯片` 可退出本局",
+            ].join("\n\n"),
+          ),
+        ]
+      : [
+          announcement,
+          `布雷开始 ${game.players.length} 位玩家，每人选择 1 片，共 ${game.totalChips} 片（每人 ${chipsPerPlayer} 片）`,
+          `本局识别号 ${game.gameCode}`,
+          `私聊 Bot 发送\n#薯片埋雷 ${game.gameCode} 薯片编号`,
+          game.revealMineOwners
+            ? "结算时会公布每位埋雷者对应的薯片编号"
+            : "结算只公布雷位，不公布埋雷者",
+          "游戏中发送 #退出薯片 可退出本局",
+        ]
     await this.replyWithBoard(
       e,
       game,
@@ -593,7 +773,7 @@ export class Gi_chipSnack extends plugin {
     await withGroupLock(groupId, async () => {
       const game = await loadGame(groupId)
       if (!game || game.phase !== "lobby") {
-        await e.reply("本群没有等待开始的薯片游戏")
+        await e.reply("本群当前没有等待开始的薯片游戏")
         return
       }
       if (game.hostId !== getUserId(e) && !e.isMaster) {
@@ -605,7 +785,7 @@ export class Gi_chipSnack extends plugin {
         return
       }
 
-      await this.beginPlantingLocked(e, groupId, game, "发起人已提前开局，接下来开始布雷")
+      await this.beginPlantingLocked(e, groupId, game, "发起人已提前开始游戏，现进入布雷阶段")
     })
     return true
   }
@@ -630,7 +810,35 @@ export class Gi_chipSnack extends plugin {
     const groupId = String(e.group_id)
     await withGroupLock(groupId, async () => {
       await redis.set(groupChipCountKey(groupId), String(chipsPerPlayer))
-      await e.reply(`本群每人薯片数量已设为 ${chipsPerPlayer}，下次开始布雷时生效`)
+      await e.reply(
+        isQBotCompatible(e)
+          ? markdownText(
+              `**群设置已更新**\n\n每人薯片数量：**${chipsPerPlayer}**\n\n下次开始布雷时生效`,
+            )
+          : `本群每人薯片数量已设为 ${chipsPerPlayer}，下次开始布雷时生效`,
+      )
+    })
+    return true
+  }
+
+  async setMineOwnerReveal(e) {
+    if (!e.isGroup || !e.group_id) {
+      await e.reply("请在群聊中设置是否公开埋雷者")
+      return true
+    }
+
+    const match = String(e.msg || e.raw_message || "").match(/^(#|\/)?设置薯片公开埋雷者\s+(开|关)$/)
+    const enabled = match?.[2] === "开"
+    const groupId = String(e.group_id)
+    await withGroupLock(groupId, async () => {
+      await redis.set(groupRevealMineOwnersKey(groupId), enabled ? "1" : "0")
+      await e.reply(
+        isQBotCompatible(e)
+          ? markdownText(
+              `**群设置已更新**\n\n游戏结束后公开埋雷者：**${enabled ? "开启" : "关闭"}**\n\n下次开始布雷时生效`,
+            )
+          : `本群游戏结束后公开埋雷者已${enabled ? "开启" : "关闭"}，下次开始布雷时生效`,
+      )
     })
     return true
   }
@@ -658,8 +866,8 @@ export class Gi_chipSnack extends plugin {
     if (!groupId) {
       await e.reply(
         compatible
-          ? "本群没有等待布雷的游戏，或布雷阶段已结束"
-          : "没有找到这个局号对应的游戏，请检查局号或确认游戏仍在布雷阶段",
+          ? "本群当前没有正在布雷的薯片游戏"
+          : "没有找到对应的游戏，请检查局号或确认游戏仍处于布雷阶段",
       )
       return true
     }
@@ -667,18 +875,18 @@ export class Gi_chipSnack extends plugin {
     await withGroupLock(groupId, async () => {
       const game = await loadGame(groupId)
       if (!game || game.gameCode !== gameCode || game.phase !== "planting") {
-        await e.reply("本群没有等待布雷的游戏，或布雷阶段已结束")
+        await e.reply("本群当前没有正在布雷的薯片游戏")
         return
       }
 
       const userId = getUserId(e)
       const player = game.players.find(player => player.id === userId)
       if (!player) {
-        await e.reply("你没有加入本群游戏，不能埋雷")
+        await e.reply("你不是本局玩家，不能提交雷位")
         return
       }
       if (game.submittedIds.includes(userId)) {
-        await e.reply("你已经提交过雷位，每人只能埋一颗雷")
+        await e.reply("你已提交过雷位，每位玩家只能埋一颗雷")
         return
       }
 
@@ -691,6 +899,15 @@ export class Gi_chipSnack extends plugin {
       }
       if (game.mines.includes(chipId)) {
         await deleteGame(groupId, game)
+        if (compatible) {
+          await e.reply(
+            markdownText("## 本局已作废\n\n检测到重复雷位，游戏数据已清除。点击「重新开局」创建新局"),
+            false,
+            { keyboard: this.makeRestartKeyboard(game) },
+          )
+          return
+        }
+
         await e.reply("发现重复雷位，本局已作废，请回群重新开始")
         const notified = await this.sendToGroup(
           e,
@@ -705,19 +922,24 @@ export class Gi_chipSnack extends plugin {
       game.mines.sort((left, right) => left - right)
       game.mineOwners ||= {}
       game.mineOwners[userId] = chipId
+      game.mineOwnerNames ||= {}
+      game.mineOwnerNames[userId] = player.name
       game.submittedIds.push(userId)
       game.submittedIds.sort()
       const progressMessage = compatible
-        ? [{ type: "at", id: userId }, ` 已埋好（${game.submittedIds.length}/${game.players.length}）`]
+        ? [
+            { type: "at", id: userId },
+            markdownText(` 已埋好 · **${game.submittedIds.length}/${game.players.length}**`),
+          ]
         : `${player.name} 已埋好（${game.submittedIds.length}/${game.players.length}）`
 
       if (game.submittedIds.length < game.players.length) {
         await saveGame(groupId, game)
         if (compatible) {
-          await e.reply(progressMessage)
+          await e.reply(progressMessage, false, { recallMsg: PROGRESS_RECALL_SECONDS })
         } else {
-          await e.reply("雷位已收到，等待其他玩家完成布雷")
-          if (!(await this.sendToGroup(e, groupId, progressMessage))) {
+          await e.reply("已收到你的雷位，等待其他玩家完成布雷")
+          if (!(await this.sendToGroup(e, groupId, progressMessage, PROGRESS_RECALL_SECONDS))) {
             await e.reply("暂时无法通知原群，请回群查看布雷进度")
           }
         }
@@ -726,7 +948,6 @@ export class Gi_chipSnack extends plugin {
 
       game.phase = "playing"
       delete game.submittedIds
-      delete game.mineOwners
       game.turnIndex = 0
       await saveGame(groupId, game)
       if (!compatible) await e.reply("埋雷成功，所有玩家已完成布雷，游戏开始")
@@ -734,9 +955,8 @@ export class Gi_chipSnack extends plugin {
       const message = compatible
         ? [
             ...progressMessage,
-            "\n布雷完成，游戏开始\n现在轮到 ",
-            { type: "at", id: firstPlayer.id },
-            "\n点击下方按钮选择薯片",
+            markdownText("\n**布雷完成，游戏开始**"),
+            ...makeCurrentPlayerQuote(e, firstPlayer, "点击下方按钮选择薯片"),
           ]
         : [
             `${progressMessage}\n布雷完成，游戏开始\n现在轮到 `,
@@ -795,6 +1015,9 @@ export class Gi_chipSnack extends plugin {
 
       const currentIndex = game.turnIndex
       const hitMine = game.mines.includes(chipId)
+      const ateOwnMine =
+        hitMine && Number(game.mineOwners?.[currentPlayer.id]) === chipId
+      const resultText = hitMine ? "💥 好吃到爆！" : "✅ 安全"
       game.opened.push(chipId)
       if (hitMine) currentPlayer.alive = false
 
@@ -802,32 +1025,75 @@ export class Gi_chipSnack extends plugin {
       const survivors = game.players.filter(player => player.alive)
       const safeChipsOpened = game.opened.filter(id => !game.mines.includes(id)).length
       const allSafeOpened = safeChipsOpened === total - game.mines.length
+      const allRemainingChipsAreMines = allSafeOpened && game.opened.length < total
 
       if (allDead || survivors.length === 1 || allSafeOpened) {
         game.phase = "finished"
         const compatible = isQBotCompatible(e)
-        const winnerMentions = survivors.flatMap((player, index) =>
-          index ? ["、", playerMention(e, player)] : [playerMention(e, player)],
-        )
         const result = allDead
           ? "所有玩家都被炸飞，本局无人存活"
           : survivors.length === 1
             ? compatible
-              ? [playerMention(e, survivors[0]), " 获胜"]
+              ? "本局结束"
               : `最后一名存活者 ${survivors[0].name} 获胜`
+            : allRemainingChipsAreMines
+              ? compatible
+                ? "剩下的薯片全是雷，存活玩家获胜"
+                : `剩下的薯片全是雷，存活玩家 ${survivors.map(player => player.name).join("、")} 获胜`
             : compatible
-              ? ["安全薯片已吃完，存活玩家获胜 ", ...winnerMentions]
-              : `安全薯片已吃完，存活玩家获胜 ${survivors.map(player => player.name).join("、")}`
+              ? "所有安全薯片均已吃完"
+              : `所有安全薯片均已吃完，存活玩家 ${survivors.map(player => player.name).join("、")} 获胜`
+        const mineOwnerDetails = makeMineOwnerDetails(
+          e,
+          game,
+          undefined,
+          ateOwnMine ? chipId : undefined,
+        )
+        const ownMineMessage = ateOwnMine
+          ? compatible
+            ? [
+                markdownText("\n\n"),
+                playerMention(e, currentPlayer),
+                markdownText(" 吃到了自己的雷！"),
+              ]
+            : `\n${currentPlayer.name}吃到了自己的雷！`
+          : null
         const mineList = game.mines.join("、")
+          const mineListDetails = game.revealMineOwners
+            ? []
+            : [
+                compatible
+                  ? markdownText(`\n\n**本局雷位：** \`${mineList}\``)
+                  : `\n本局雷位 ${mineList}`,
+              ]
         const text = compatible
           ? [
               playerMention(e, currentPlayer),
-              ` 选择 ${chipId} 号薯片\n${hitMine ? "好吃到爆！" : "安全"}\n`,
-              ...(Array.isArray(result) ? result : [result]),
-              `\n本局雷位 ${mineList}`,
+              markdownText(` 选择 **${chipId} 号薯片**\n\n**${resultText}**`),
+              ...(ownMineMessage || []),
+              markdownText(`\n\n${result}`),
+              ...makePlayerListQuote(
+                e,
+                survivors,
+                "获胜玩家",
+              ),
+              ...mineOwnerDetails,
+              ...mineListDetails,
             ]
-          : `${currentPlayer.name} 选择 ${chipId} 号薯片\n${hitMine ? "好吃到爆！" : "安全"}\n${result}\n本局雷位 ${mineList}`
-        await this.replyWithBoard(e, game, text, true)
+          : mineOwnerDetails.length
+            ? [
+                `${currentPlayer.name} 选择 ${chipId} 号薯片\n${resultText}${ownMineMessage || ""}\n${result}`,
+                ...mineOwnerDetails,
+                ...mineListDetails,
+              ]
+            : `${currentPlayer.name} 选择 ${chipId} 号薯片\n${resultText}${ownMineMessage || ""}\n${result}${game.revealMineOwners ? "" : `\n本局雷位 ${mineList}`}`
+        await this.replyWithBoard(
+          e,
+          game,
+          text,
+          true,
+          compatible ? { keyboard: this.makeRestartKeyboard(game) } : undefined,
+        )
         await deleteGame(groupId, game)
         return
       }
@@ -835,15 +1101,27 @@ export class Gi_chipSnack extends plugin {
       game.turnIndex = findNextAliveIndex(game, currentIndex)
       await saveGame(groupId, game)
       const nextPlayer = getCurrentPlayer(game)
-      const result = hitMine ? "好吃到爆！" : "安全"
+      const mineOwnerDetails = hitMine && !ateOwnMine ? makeMineOwnerDetails(e, game, chipId) : []
+      const ownMineMessage = ateOwnMine
+        ? compatible
+          ? [
+              markdownText("\n\n"),
+              playerMention(e, currentPlayer),
+              markdownText(" 吃到了自己的雷！"),
+            ]
+          : `\n${currentPlayer.name}吃到了自己的雷！`
+        : null
       const resultMessage = compatible
         ? [
             playerMention(e, currentPlayer),
-            ` 选择 ${chipId} 号薯片\n${result}\n下一位 `,
-            playerMention(e, nextPlayer),
+            markdownText(` 选择 **${chipId} 号薯片**\n\n**${resultText}**`),
+            ...(ownMineMessage || []),
+            ...mineOwnerDetails,
           ]
         : [
-            `${currentPlayer.name} 玩家选择 ${chipId} 号薯片\n${result}\n下一位 `,
+            `${currentPlayer.name} 选择了 ${chipId} 号薯片\n${resultText}${ownMineMessage || ""}`,
+            ...mineOwnerDetails,
+            "\n下一位 ",
             playerMention(e, nextPlayer),
           ]
       await this.replyTurnMessages(e, game, resultMessage)
@@ -868,19 +1146,32 @@ export class Gi_chipSnack extends plugin {
       getChipCount(game.players.length, game.chipsPerPlayer || DEFAULT_CHIPS_PER_PLAYER)
     if (game.phase === "lobby") {
       const maxPlayers = game.maxPlayers || DEFAULT_MAX_PLAYERS
-      await e.reply(
-        `薯片游戏报名中 ${game.players.length}/${maxPlayers} 人\n满员后自动开局；发起人可提前开局`,
-      )
+      const status = isQBotCompatible(e)
+        ? markdownText(
+            `## 薯片游戏报名中\n\n**报名人数：** ${game.players.length}/${maxPlayers}\n\n满员后自动开局；发起人可提前开局`,
+          )
+        : `薯片游戏报名中 ${game.players.length}/${maxPlayers} 人\n满员后自动开局；发起人可提前开局`
+      await e.reply(status)
     } else if (game.phase === "planting") {
-      await e.reply(
-        `正在秘密布雷 ${(game.submittedIds || []).length}/${game.players.length} 人已提交`,
-      )
+      const submitted = (game.submittedIds || []).length
+      const status = isQBotCompatible(e)
+        ? markdownText(
+            `## 秘密布雷中\n\n**已提交：** ${submitted}/${game.players.length} 人\n\n雷位不会在布雷完成前公开`,
+          )
+        : `秘密布雷进行中，已提交 ${submitted}/${game.players.length} 人`
+      await e.reply(status)
     } else {
       const currentPlayer = getCurrentPlayer(game)
-      const status = `薯片游戏进行中 ${game.players.filter(player => player.alive).length} 人存活，已吃 ${game.opened.length}/${total} 片`
+      const status = isQBotCompatible(e)
+        ? markdownText(
+            `## 薯片游戏进行中\n\n**存活：** ${game.players.filter(player => player.alive).length} 人\n**已吃：** ${game.opened.length}/${total} 片`,
+          )
+        : `薯片游戏进行中 ${game.players.filter(player => player.alive).length} 人存活，已吃 ${game.opened.length}/${total} 片`
       await e.reply(
         currentPlayer
-          ? [status, "\n现在轮到 ", playerMention(e, currentPlayer)]
+          ? isQBotCompatible(e)
+            ? [status, ...makeCurrentPlayerQuote(e, currentPlayer)]
+            : [status, "\n现在轮到 ", playerMention(e, currentPlayer)]
           : status,
       )
     }
@@ -922,15 +1213,17 @@ export class Gi_chipSnack extends plugin {
           game.mines = []
           game.submittedIds = []
           game.mineOwners = {}
+          game.mineOwnerNames = {}
         }
         if (game.mineOwners) delete game.mineOwners[userId]
+        if (game.mineOwnerNames) delete game.mineOwnerNames[userId]
       }
 
       if (game.players.length === 0) {
         await deleteGame(groupId, game)
         await e.reply(
           isQBotCompatible(e)
-            ? [playerMention(e, leavingPlayer), " 已退出，本局无人参加，游戏已取消"]
+            ? [playerMention(e, leavingPlayer), markdownText(" 已退出，本局无人参加，游戏已取消")]
             : `${leavingPlayer.name} 已退出，本局无人参加，游戏已取消`,
         )
         return
@@ -938,10 +1231,11 @@ export class Gi_chipSnack extends plugin {
 
       const newHost = wasHost ? promoteRandomPlayer(game) : null
       const message = isQBotCompatible(e)
-        ? [playerMention(e, leavingPlayer), " 已退出本局"]
+        ? [playerMention(e, leavingPlayer), markdownText(" 已退出本局")]
         : [`${leavingPlayer.name} 已退出本局`]
       if (newHost) {
-        if (isQBotCompatible(e)) message.push("\n发起人已移交给 ", playerMention(e, newHost))
+        if (isQBotCompatible(e))
+          message.push(markdownText("\n发起人已移交给 "), playerMention(e, newHost))
         else message.push(`\n发起人已移交给 ${newHost.name}`)
       }
 
@@ -950,10 +1244,20 @@ export class Gi_chipSnack extends plugin {
         game.mines = []
         game.submittedIds = []
         game.mineOwners = {}
+        game.mineOwnerNames = {}
+        delete game.revealMineOwners
         delete game.totalChips
         await saveGame(groupId, game)
-        message.push("\n当前不足 2 人，游戏已回到报名阶段")
-        await e.reply(message)
+        message.push(
+          isQBotCompatible(e)
+            ? markdownText("\n当前不足 2 人，游戏已回到报名阶段")
+            : "\n当前不足 2 人，游戏已回到报名阶段",
+        )
+        if (isQBotCompatible(e)) {
+          await e.reply(markdownParts(message), false, { keyboard: this.makeLobbyKeyboard(game) })
+        } else {
+          await e.reply(message)
+        }
         return
       }
 
@@ -961,13 +1265,38 @@ export class Gi_chipSnack extends plugin {
         const survivors = game.players.filter(player => player.alive)
         if (survivors.length <= 1) {
           game.phase = "finished"
+          const compatible = isQBotCompatible(e)
           const result = survivors.length
-            ? isQBotCompatible(e)
-              ? [playerMention(e, survivors[0]), " 获胜"]
+            ? compatible
+              ? "本局结束"
               : `最后一名存活者 ${survivors[0].name} 获胜`
             : "所有存活玩家都已退出，本局无人获胜"
-          message.push("\n", ...(Array.isArray(result) ? result : [result]), `\n本局雷位 ${game.mines.join("、")}`)
-          await this.replyWithBoard(e, game, message, true)
+          const mineOwnerDetails = makeMineOwnerDetails(e, game)
+          const mineListDetails = game.revealMineOwners
+            ? []
+            : [markdownText(`\n\n本局雷位 ${game.mines.join("、")}`)]
+          if (compatible) {
+            message.push(
+              markdownText(`\n${result}`),
+              ...makePlayerListQuote(e, survivors, "获胜玩家"),
+              ...mineOwnerDetails,
+              ...mineListDetails,
+            )
+          } else {
+            message.push(
+              "\n",
+              result,
+              ...mineOwnerDetails,
+              ...(game.revealMineOwners ? [] : [`\n本局雷位 ${game.mines.join("、")}`]),
+            )
+          }
+          await this.replyWithBoard(
+            e,
+            game,
+            message,
+            true,
+            isQBotCompatible(e) ? { keyboard: this.makeRestartKeyboard(game) } : undefined,
+          )
           await deleteGame(groupId, game)
           return
         }
@@ -985,21 +1314,47 @@ export class Gi_chipSnack extends plugin {
       if (plantingComplete) {
         game.phase = "playing"
         delete game.submittedIds
-        delete game.mineOwners
         game.turnIndex = 0
       }
 
       await saveGame(groupId, game)
       if (game.phase === "planting") {
-        message.push(`\n秘密布雷进度 ${game.submittedIds.length}/${game.players.length}`)
+        message.push(
+          isQBotCompatible(e)
+            ? markdownText(`\n秘密布雷进度：**${game.submittedIds.length}/${game.players.length}**`)
+            : `\n秘密布雷进度 ${game.submittedIds.length}/${game.players.length}`,
+        )
       } else if (game.phase === "playing") {
         const currentPlayer = getCurrentPlayer(game)
-        if (plantingComplete) message.push("\n布雷完成，游戏开始")
-        message.push("\n现在轮到 ", playerMention(e, currentPlayer))
+        if (plantingComplete)
+          message.push(
+            isQBotCompatible(e)
+              ? markdownText("\n**布雷完成，游戏开始**")
+              : "\n布雷完成，游戏开始",
+          )
+        if (isQBotCompatible(e)) {
+          message.push(...makeCurrentPlayerQuote(e, currentPlayer, "点击下方按钮选择薯片"))
+        } else {
+          message.push("\n现在轮到 ", playerMention(e, currentPlayer))
+        }
       } else {
-        message.push(`\n报名中 ${game.players.length}/${game.maxPlayers || DEFAULT_MAX_PLAYERS} 人`)
+        message.push(
+          isQBotCompatible(e)
+            ? markdownText(
+                `\n报名中：**${game.players.length}/${game.maxPlayers || DEFAULT_MAX_PLAYERS} 人**`,
+              )
+            : `\n报名中 ${game.players.length}/${game.maxPlayers || DEFAULT_MAX_PLAYERS} 人`,
+        )
       }
-      await e.reply(message)
+      if (isQBotCompatible(e) && game.phase === "lobby") {
+        await e.reply(markdownParts(message), false, { keyboard: this.makeLobbyKeyboard(game) })
+      } else if (isQBotCompatible(e) && game.phase === "playing") {
+        await this.replyWithBoard(e, game, message, false, {
+          keyboards: this.makeGameKeyboards(game, "playing"),
+        })
+      } else {
+        await e.reply(isQBotCompatible(e) ? markdownParts(message) : message)
+      }
     })
     return true
   }
@@ -1022,7 +1377,11 @@ export class Gi_chipSnack extends plugin {
         return
       }
       await deleteGame(groupId, game)
-      await e.reply("本局薯片游戏已结束，棋盘和雷位已清除")
+      await e.reply(
+        isQBotCompatible(e)
+          ? markdownText("## 本局游戏已结束\n\n棋盘和雷位已清除")
+          : "本局薯片游戏已结束，棋盘和雷位已清除",
+      )
     })
     return true
   }
