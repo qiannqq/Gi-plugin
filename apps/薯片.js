@@ -464,6 +464,11 @@ export class Gi_chipSnack extends plugin {
         [
           ...resultMessage,
           ...makeCurrentPlayerQuote(e, getCurrentPlayer(game), "点击下方按钮选择薯片"),
+          ...makePlayerListQuote(
+            e,
+            game.players.filter(player => player.alive),
+            "当前存活玩家",
+          ),
         ],
         false,
         { keyboards: this.makeGameKeyboards(game, "playing") },
@@ -946,23 +951,57 @@ export class Gi_chipSnack extends plugin {
         return
       }
       if (game.mines.includes(chipId)) {
-        await deleteGame(groupId, game)
+        const previousMineOwnerId = Object.entries(game.mineOwners || {}).find(
+          ([, plantedChipId]) => Number(plantedChipId) === chipId,
+        )?.[0]
+        const previousMineOwnerName = previousMineOwnerId
+          ? game.mineOwnerNames?.[previousMineOwnerId] ||
+            game.players.find(owner => owner.id === previousMineOwnerId)?.name ||
+            previousMineOwnerId
+          : "未知玩家"
+        game.mines = []
+        game.mineOwners = {}
+        game.mineOwnerNames = {}
+        game.submittedIds = []
+        game.opened = []
+        game.deaths = []
+        game.turnIndex = 0
+        game.players.forEach(player => {
+          player.alive = true
+        })
+        await saveGame(groupId, game)
+
         if (compatible) {
-          await e.reply(
-            markdownText("## 本局已作废\n\n检测到重复雷位，游戏数据已清除。点击「重新开局」创建新局"),
-            false,
-            { keyboard: this.makeRestartKeyboard(game) },
-          )
+          const conflictMessage = game.revealMineOwners
+            ? [
+                markdownText(
+                  `## 检测到重复雷位，已自动重新布雷\n\n**冲突点位：** ${chipId} 号薯片\n\n**涉及埋雷者：** `,
+                ),
+                previousMineOwnerId
+                  ? playerMention(e, { id: previousMineOwnerId, name: previousMineOwnerName })
+                  : markdownText(previousMineOwnerName),
+                markdownText("、"),
+                playerMention(e, player),
+                markdownText("\n\n所有玩家的雷位已清空，请重新选择。"),
+              ]
+            : markdownText("## 检测到重复雷位，已自动重新布雷\n\n所有玩家的雷位已清空，请重新选择。")
+          await this.replyWithBoard(e, game, conflictMessage, false, {
+            keyboards: this.makeGameKeyboards(game, "planting"),
+          })
           return
         }
 
-        await e.reply("发现重复雷位，本局已作废，请回群重新开始")
+        const conflictMessage = game.revealMineOwners
+          ? `发现重复雷位，已自动重新布雷\n冲突点位：${chipId} 号薯片\n涉及埋雷者：${previousMineOwnerName}、${player.name}\n请所有玩家重新提交雷位。`
+          : "发现重复雷位，已自动重新布雷；所有玩家的雷位已清空，请重新提交。"
+        const directMessage = `${conflictMessage}\n私聊 Bot 发送\n#薯片埋雷 ${game.gameCode} 薯片编号`
+        await e.reply(directMessage)
         const notified = await this.sendToGroup(
           e,
           groupId,
-          "本局布雷出现重复雷位，游戏已作废，请重新发起",
+          conflictMessage,
         )
-        if (!notified) await e.reply("暂时无法通知原群，请回群告知群友本局已作废")
+        if (!notified) await e.reply("暂时无法通知原群，请回群告知群友重新提交雷位")
         return
       }
 
