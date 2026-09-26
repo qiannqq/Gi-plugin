@@ -51,6 +51,23 @@ export function supportGuoba() {
         },
         {
           component: 'Divider',
+          label: '薯片游戏设置'
+        },
+        {
+          field: 'qqbot-compatible',
+          label: 'QQBot兼容模式',
+          bottomHelpMessage: 'false：禁用；auto：检测字母账号ID、QBot/QQBot适配器并自动启用；true：强制启用。QQBot还需在 config/QQBot.yaml 的 intents 中配置 INTERACTION',
+          component: 'Select',
+          componentProps: {
+            options: [
+              { label: '禁用', value: false },
+              { label: '自动检测', value: 'auto' },
+              { label: '强制启用', value: true },
+            ],
+          },
+        },
+        {
+          component: 'Divider',
           label: '每日打卡设置'
         },
         {

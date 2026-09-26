@@ -1,5 +1,7 @@
 #是否开启自动更新
 autoupdate: true
+#QQBot小游戏兼容模式：false禁用，auto自动检测，true强制开启
+qqbot-compatible: auto
 #每日打卡达成当天首个欧皇阈值(N<100)
 mrdkOH: 95
 #每日打卡达成当天首个非酋阈值(0<N)
